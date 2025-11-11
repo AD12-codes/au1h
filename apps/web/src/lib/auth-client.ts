@@ -1,8 +1,12 @@
-import type { auth } from "@au1h/auth";
+import { adminClient, organizationClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
-import { inferAdditionalFields } from "better-auth/client/plugins";
 
 export const authClient = createAuthClient({
-	baseURL: import.meta.env.VITE_SERVER_URL,
-	plugins: [inferAdditionalFields<typeof auth>()],
+  baseURL: import.meta.env.VITE_SERVER_URL,
+  plugins: [adminClient(), organizationClient()],
+  fetchOptions: {
+    credentials: "include",
+  },
 });
+
+export const { signIn, signOut, useSession } = authClient;

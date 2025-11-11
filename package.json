@@ -23,11 +23,7 @@
     "check-types": "turbo check-types",
     "dev:native": "turbo -F native dev",
     "dev:web": "turbo -F web dev",
-    "dev:server": "turbo -F server dev",
-    "db:push": "turbo -F @au1h/db db:push",
-    "db:studio": "turbo -F @au1h/db db:studio",
-    "db:generate": "turbo -F @au1h/db db:generate",
-    "db:migrate": "turbo -F @au1h/db db:migrate"
+    "dev:server": "turbo -F server dev"
   },
   "dependencies": {
     "dotenv": "^17.2.2",
@@ -39,7 +35,7 @@
     "ultracite": "6.3.2",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.2",
-    "tsdown": "^0.15.5",
+    "tsdown": "^0.16.2",
     "@types/bun": "^1.2.6"
   },
   "lint-staged": {

@@ -1,0 +1,1 @@
+export const DEFAULT_MILLISECONDS = 1000;

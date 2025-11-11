@@ -19,11 +19,16 @@
       "!**/.alchemy",
       "!**/.svelte-kit",
       "!**/wrangler.jsonc",
-      "!**/.source"
+      "!**/.source",
+      "!**/node_modules"
     ]
   },
-  "extends": [
-    "ultracite/core",
-    "ultracite/react"
-  ]
+  "extends": ["ultracite/core", "ultracite/react"],
+  "linter": {
+    "rules": {
+      "style": {
+        "useConsistentTypeDefinitions": "off"
+      }
+    }
+  }
 }
