@@ -1,0 +1,51 @@
+{
+  "name": "au1h",
+  "private": true,
+  "type": "module",
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ],
+    "catalog": {
+      "better-auth": "^1.3.28",
+      "dotenv": "^17.2.2",
+      "zod": "^4.1.11",
+      "typescript": "^5.8.2",
+      "tsdown": "^0.15.5"
+    }
+  },
+  "scripts": {
+    "check": "biome check --write .",
+    "prepare": "husky",
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "check-types": "turbo check-types",
+    "dev:native": "turbo -F native dev",
+    "dev:web": "turbo -F web dev",
+    "dev:server": "turbo -F server dev",
+    "db:push": "turbo -F @au1h/db db:push",
+    "db:studio": "turbo -F @au1h/db db:studio",
+    "db:generate": "turbo -F @au1h/db db:generate",
+    "db:migrate": "turbo -F @au1h/db db:migrate"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.2",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "@biomejs/biome": "2.3.4",
+    "ultracite": "6.3.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.2",
+    "tsdown": "^0.15.5",
+    "@types/bun": "^1.2.6"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,jsonc,css,scss,md,mdx}": [
+      "bun x ultracite fix"
+    ]
+  },
+  "packageManager": "bun@1.2.19"
+}
