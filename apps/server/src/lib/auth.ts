@@ -232,11 +232,10 @@ export const auth = betterAuth<BetterAuthOptions>({
     modelName: "sessions",
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // 1 day
-    storeSessionInDatabase: true, // Store sessions in DB even with secondary storage (Redis)
-    cookieCache: {
-      enabled: true,
-      maxAge: 5 * 60, // 5 minutes
-    },
+    // With DB + Redis, don't use cookie cache - it causes logout issues
+    // Cookie cache stores session in cookie itself (stateless), which doesn't
+    // get invalidated properly on logout
+    storeSessionInDatabase: true,
     additionalFields: {
       applicationId: {
         type: "string",
@@ -259,10 +258,12 @@ export const auth = betterAuth<BetterAuthOptions>({
     modelName: "verifications",
   },
   advanced: {
-    useSecureCookies: true,
+    // Only use secure cookies in production (HTTPS)
+    // localhost (HTTP) cannot set/clear secure cookies
+    useSecureCookies: process.env.NODE_ENV === "production",
     defaultCookieAttributes: {
-      sameSite: "none",
-      secure: true,
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: process.env.NODE_ENV === "production",
       httpOnly: true,
     },
   },

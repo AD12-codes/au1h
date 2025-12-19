@@ -1,10 +1,11 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { BookOpen, Home, LogOut, Moon, ShieldCheck, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { authClient } from "@/lib/auth-client";
+import { queryClient } from "@/lib/query-client";
 
 function getInitials(name: string): string {
   return name
@@ -21,12 +22,39 @@ function getFirstName(name: string): string {
 
 export function Header() {
   const { theme, setTheme } = useTheme();
-  const navigate = useNavigate();
   const { data: session } = authClient.useSession();
 
   const handleLogout = async () => {
-    await authClient.signOut();
-    navigate({ to: "/login" });
+    try {
+      // 1. Clear React Query cache (prevents stale data)
+      queryClient.clear();
+
+      // 2. Clear localStorage (except theme preferences)
+      const themeValue = localStorage.getItem("vite-ui-theme");
+      localStorage.clear();
+      if (themeValue) {
+        localStorage.setItem("vite-ui-theme", themeValue);
+      }
+
+      // 3. Sign out from auth service
+      await authClient.signOut({
+        fetchOptions: {
+          onSuccess: () => {
+            window.location.href = "/login";
+          },
+          onError: () => {
+            // Even if server fails, redirect to login
+            window.location.href = "/login";
+          },
+        },
+      });
+    } catch (error) {
+      // SECURITY: Always redirect even if logout fails
+      console.error("Logout error:", error);
+      queryClient.clear();
+      localStorage.clear();
+      window.location.href = "/login";
+    }
   };
 
   const toggleTheme = () => {
