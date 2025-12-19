@@ -8,6 +8,13 @@
       "when": 1766088464544,
       "tag": "0000_applications",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1766130037912,
+      "tag": "0001_application_routes",
+      "breakpoints": true
     }
   ]
 }

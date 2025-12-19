@@ -1,10 +1,12 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, Plus, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { ApplicationStats } from "@/components/applications/application-stats";
 import { IntegrationSection } from "@/components/applications/integration-section";
 import { SecretDialog } from "@/components/applications/secret-dialog";
 import { SettingsForm } from "@/components/applications/settings-form";
+import { RouteFormDialog } from "@/components/routes/route-form-dialog";
+import { RoutesTable } from "@/components/routes/routes-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +23,8 @@ import {
   useRegenerateSecret,
   useUpdateApplication,
 } from "@/hooks/use-applications";
+import type { AppRoute } from "@/hooks/use-routes";
+import { useRoutes } from "@/hooks/use-routes";
 import type { UpdateApplicationInput } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
@@ -72,6 +76,10 @@ function ApplicationDetailPage() {
   const [formData, setFormData] = useState<UpdateApplicationInput | null>(null);
   const [success, setSuccess] = useState(false);
   const [newSecret, setNewSecret] = useState<string | null>(null);
+  const [routeDialogOpen, setRouteDialogOpen] = useState(false);
+  const [editingRoute, setEditingRoute] = useState<AppRoute | null>(null);
+
+  const { data: routes = [], isLoading: routesLoading } = useRoutes(id);
 
   // Initialize form data when application loads
   if (application && !formData) {
@@ -199,7 +207,53 @@ function ApplicationDetailPage() {
         </CardContent>
       </Card>
 
+      <Card className="mt-6">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Proxy Routes</CardTitle>
+              <CardDescription>
+                Configure routes to proxy requests to your backend services
+              </CardDescription>
+            </div>
+            <Button
+              onClick={() => {
+                setEditingRoute(null);
+                setRouteDialogOpen(true);
+              }}
+              size="sm"
+            >
+              <Plus className="mr-2 size-4" />
+              Add Route
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {routesLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          ) : (
+            <RoutesTable
+              onEdit={(route) => {
+                setEditingRoute(route);
+                setRouteDialogOpen(true);
+              }}
+              routes={routes}
+            />
+          )}
+        </CardContent>
+      </Card>
+
       <SecretDialog onClose={() => setNewSecret(null)} secret={newSecret} />
+
+      <RouteFormDialog
+        applicationId={id}
+        onOpenChange={setRouteDialogOpen}
+        open={routeDialogOpen}
+        route={editingRoute}
+      />
     </div>
   );
 }

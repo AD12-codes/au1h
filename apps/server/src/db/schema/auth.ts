@@ -27,6 +27,27 @@ export const applications = pgTable("applications", {
 });
 
 // ============================================================================
+// APPLICATION ROUTES - Proxy route configuration per application
+// ============================================================================
+export const applicationRoutes = pgTable("application_routes", {
+  id: text("id").primaryKey(),
+  applicationId: text("application_id")
+    .notNull()
+    .references(() => applications.id, { onDelete: "cascade" }),
+  name: text("name").notNull(), // Human-readable name, e.g., "Get Todos"
+  pathPattern: text("path_pattern").notNull(), // e.g., "/todos/*", "/todos/:id"
+  backendUrl: text("backend_url").notNull(), // e.g., "http://todo-api:8080"
+  methods: text("methods").notNull(), // JSON array: ["GET", "POST"]
+  stripPrefix: boolean("strip_prefix").default(true).notNull(), // Remove path prefix before forwarding
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+// ============================================================================
 // USERS - Extended with application context for multi-tenant isolation
 // ============================================================================
 export const users = pgTable(

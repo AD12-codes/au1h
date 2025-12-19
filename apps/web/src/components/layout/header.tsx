@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Home, LogOut, Moon, ShieldCheck, Sun } from "lucide-react";
+import { BookOpen, Home, LogOut, Moon, ShieldCheck, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,12 @@ export function Header() {
             <Link to="/dashboard">
               <Home className="size-4" />
               <span className="sr-only">Home</span>
+            </Link>
+          </Button>
+          <Button asChild className="size-8" size="icon" variant="ghost">
+            <Link to="/docs">
+              <BookOpen className="size-4" />
+              <span className="sr-only">Documentation</span>
             </Link>
           </Button>
           <Separator orientation="vertical" />

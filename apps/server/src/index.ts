@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import { closeDatabase, initializeDatabase } from "@/db";
 import { logger } from "@/utils/logger";
 import { auth } from "./lib/auth";
+import { createProxyMiddleware } from "./proxy/middleware";
 import { routes } from "./routes";
 
 const app = new Hono();
@@ -23,6 +24,10 @@ app.use(
 );
 
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+
+// Proxy middleware for application routes
+// Handles requests with x-app-id header and forwards to configured backends
+app.use("/api/proxy/*", createProxyMiddleware("/api/proxy"));
 
 app.route("/api/v1", routes);
 
