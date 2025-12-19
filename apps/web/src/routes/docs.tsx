@@ -326,7 +326,7 @@ export const { useSession, signIn, signOut } = authClient;`}
 const APP_SLUG = process.env.NEXT_PUBLIC_APP_SLUG;
 
 export async function fetchTodos() {
-  const response = await fetch(\`\${API_BASE}/api/proxy/todos\`, {
+  const response = await fetch(\`\${API_BASE}/proxy/todos\`, {
     headers: {
       "x-app-id": APP_SLUG,
     },
@@ -588,7 +588,7 @@ async def get_todos(user: User = Depends(get_current_user)):
                 <Badge className="w-16 justify-center" variant="outline">
                   ANY
                 </Badge>
-                <code className="flex-1">/api/proxy/*</code>
+                <code className="flex-1">/proxy/*</code>
                 <span className="text-muted-foreground">Proxy requests</span>
               </div>
               <p className="mt-2 text-muted-foreground">

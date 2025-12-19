@@ -249,7 +249,7 @@ const API_BASE = process.env.NEXT_PUBLIC_AUTH_URL;
 const APP_SLUG = process.env.NEXT_PUBLIC_APP_SLUG;
 
 export async function fetchTodos() {
-  const response = await fetch(`${API_BASE}/api/proxy/todos`, {
+  const response = await fetch(`${API_BASE}/proxy/todos`, {
     headers: {
       "x-app-id": APP_SLUG,
     },
@@ -264,7 +264,7 @@ export async function fetchTodos() {
 }
 
 export async function createTodo(title: string) {
-  const response = await fetch(`${API_BASE}/api/proxy/todos`, {
+  const response = await fetch(`${API_BASE}/proxy/todos`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -882,9 +882,9 @@ if __name__ == "__main__":
 
 ### Proxy Endpoint
 
-| Endpoint       | Method | Description                           |
-| -------------- | ------ | ------------------------------------- |
-| `/api/proxy/*` | ANY    | Proxy requests to configured backends |
+| Endpoint   | Method | Description                           |
+| ---------- | ------ | ------------------------------------- |
+| `/proxy/*` | ANY    | Proxy requests to configured backends |
 
 **Required Headers:**
 

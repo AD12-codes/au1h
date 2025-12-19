@@ -123,8 +123,22 @@ export async function findMatchingRoute(
 ): Promise<RouteMatch | null> {
   const routes = await getActiveRoutes();
 
+  logger.debug(
+    { totalRoutes: routes.length, slugs: routes.map((r) => r.applicationSlug) },
+    "All cached routes"
+  );
+
   // Filter routes for this application
   const appRoutes = routes.filter((r) => r.applicationSlug === appSlug);
+
+  logger.debug(
+    {
+      appSlug,
+      matchingRoutes: appRoutes.length,
+      patterns: appRoutes.map((r) => r.pathPattern),
+    },
+    "Routes for app"
+  );
 
   for (const route of appRoutes) {
     // Check if method is allowed

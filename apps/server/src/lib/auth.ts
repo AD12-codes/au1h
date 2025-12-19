@@ -1,8 +1,36 @@
-import { type BetterAuthOptions, betterAuth } from "better-auth";
+import {
+  type BetterAuthOptions,
+  type BetterAuthPlugin,
+  betterAuth,
+} from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { admin, jwt, openAPI, organization } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
+
+/**
+ * Plugin to skip OAuth state cookie check in development.
+ * Cross-origin localhost setups cause state_mismatch errors because
+ * cookies aren't shared between different localhost ports.
+ * SECURITY: Only use in development!
+ */
+function skipStateMismatch(): BetterAuthPlugin {
+  return {
+    id: "skip-state-mismatch",
+    init(ctx) {
+      return {
+        context: {
+          ...ctx,
+          oauthConfig: {
+            skipStateCookieCheck: true,
+            ...ctx?.oauthConfig,
+          },
+        },
+      };
+    },
+  };
+}
+
 import { db } from "@/db";
 import {
   accounts,
@@ -18,11 +46,58 @@ import {
 import { logger } from "@/utils/logger";
 import { redisService } from "@/utils/redis";
 
-// Map of known origins to application slugs (for OAuth callback detection)
-const ORIGIN_APP_MAP: Record<string, string> = {
-  "http://localhost:4445": "admin-portal",
-  "https://admin.au1h.com": "admin-portal",
-};
+// Cache for application origins (refreshed periodically)
+interface AppOriginsCache {
+  originToSlug: Map<string, string>;
+  allOrigins: string[];
+  lastFetched: number;
+}
+
+let appOriginsCache: AppOriginsCache | null = null;
+const APP_ORIGINS_CACHE_TTL = 60 * 1000; // 1 minute
+
+async function fetchAppOrigins(): Promise<AppOriginsCache> {
+  const now = Date.now();
+
+  if (
+    appOriginsCache &&
+    now - appOriginsCache.lastFetched < APP_ORIGINS_CACHE_TTL
+  ) {
+    return appOriginsCache;
+  }
+
+  const apps = await db
+    .select({
+      slug: applications.slug,
+      allowedOrigins: applications.allowedOrigins,
+    })
+    .from(applications)
+    .where(eq(applications.isActive, true));
+
+  const originToSlug = new Map<string, string>();
+  const allOrigins: string[] = [];
+
+  for (const app of apps) {
+    if (app.allowedOrigins) {
+      const origins = app.allowedOrigins.split(",").map((o) => o.trim());
+      for (const origin of origins) {
+        if (origin) {
+          originToSlug.set(origin, app.slug);
+          allOrigins.push(origin);
+        }
+      }
+    }
+  }
+
+  // Add env origins as fallback
+  const envOrigin = process.env.CORS_ORIGIN;
+  if (envOrigin) {
+    allOrigins.push(envOrigin);
+  }
+
+  appOriginsCache = { originToSlug, allOrigins, lastFetched: now };
+  return appOriginsCache;
+}
 
 /** Parse cookies from header string */
 function parseCookies(cookieHeader: string): Record<string, string> {
@@ -36,7 +111,8 @@ function parseCookies(cookieHeader: string): Record<string, string> {
 
 /** Get app slug from OAuth state cookie (contains callback URL) */
 function getAppSlugFromOAuthState(
-  cookies: Record<string, string>
+  cookies: Record<string, string>,
+  originToSlug: Map<string, string>
 ): string | null {
   const state = cookies["better-auth.state"];
   if (!state) {
@@ -45,7 +121,7 @@ function getAppSlugFromOAuthState(
 
   try {
     const decoded = decodeURIComponent(state);
-    for (const [origin, slug] of Object.entries(ORIGIN_APP_MAP)) {
+    for (const [origin, slug] of originToSlug.entries()) {
       if (decoded.includes(origin)) {
         return slug;
       }
@@ -57,31 +133,49 @@ function getAppSlugFromOAuthState(
 }
 
 /**
- * Get application slug from request context
- * Checks: header → origin → OAuth state cookie
+ * Get application slug from request context (async version)
+ * Checks: header → au1h-app-id cookie → origin → OAuth state cookie
  */
-function getAppSlugFromRequest(ctx: { headers?: Headers }): string | null {
+async function getAppSlugFromRequestAsync(ctx: {
+  headers?: Headers;
+}): Promise<string | null> {
   // 1. Check x-app-id header (direct API calls)
   const headerSlug = ctx.headers?.get("x-app-id");
   if (headerSlug) {
+    logger.debug({ headerSlug }, "Found app slug from x-app-id header");
     return headerSlug;
   }
 
-  // 2. Check origin header (some OAuth callbacks)
-  const origin = ctx.headers?.get("origin");
-  if (origin && ORIGIN_APP_MAP[origin]) {
-    return ORIGIN_APP_MAP[origin];
-  }
-
-  // 3. Check OAuth state cookie (OAuth callbacks)
+  // 2. Check au1h-app-id cookie (OAuth callbacks - set by middleware)
   const cookieHeader = ctx.headers?.get("cookie") ?? "";
   const cookies = parseCookies(cookieHeader);
-  const stateSlug = getAppSlugFromOAuthState(cookies);
+  const cookieSlug = cookies["au1h-app-id"];
+  if (cookieSlug) {
+    logger.debug({ cookieSlug }, "Found app slug from au1h-app-id cookie");
+    return cookieSlug;
+  }
+
+  // Get cached origins
+  const cache = await fetchAppOrigins();
+
+  // 3. Check origin header
+  const origin = ctx.headers?.get("origin");
+  if (origin) {
+    const slug = cache.originToSlug.get(origin);
+    if (slug) {
+      logger.debug({ origin, slug }, "Found app slug from origin");
+      return slug;
+    }
+  }
+
+  // 4. Check OAuth state cookie (OAuth callbacks)
+  const stateSlug = getAppSlugFromOAuthState(cookies, cache.originToSlug);
   if (stateSlug) {
+    logger.debug({ stateSlug }, "Found app slug from OAuth state");
     return stateSlug;
   }
 
-  logger.warn("No app context found");
+  logger.warn("No app context found in header, cookie, or origin");
   return null;
 }
 
@@ -165,6 +259,7 @@ export const auth = betterAuth<BetterAuthOptions>({
     modelName: "verifications",
   },
   advanced: {
+    useSecureCookies: true,
     defaultCookieAttributes: {
       sameSite: "none",
       secure: true,
@@ -184,7 +279,14 @@ export const auth = betterAuth<BetterAuthOptions>({
       await redis.del(key);
     },
   },
-  trustedOrigins: [process.env.CORS_ORIGIN || ""],
+  trustedOrigins: async () => {
+    const cache = await fetchAppOrigins();
+    // In development, also allow localhost
+    if (process.env.NODE_ENV !== "production") {
+      return [...cache.allOrigins, "http://localhost:*"];
+    }
+    return cache.allOrigins;
+  },
 
   socialProviders: {
     github: {
@@ -193,6 +295,8 @@ export const auth = betterAuth<BetterAuthOptions>({
     },
   },
   plugins: [
+    // Skip state check in development (cross-origin localhost issue)
+    ...(process.env.NODE_ENV !== "production" ? [skipStateMismatch()] : []),
     jwt({
       jwt: {
         definePayload: ({ user }) => {
@@ -218,7 +322,9 @@ export const auth = betterAuth<BetterAuthOptions>({
     user: {
       create: {
         before: async (user, ctx) => {
-          const appSlug = getAppSlugFromRequest({ headers: ctx?.headers });
+          const appSlug = await getAppSlugFromRequestAsync({
+            headers: ctx?.headers,
+          });
 
           if (!appSlug) {
             logger.error(

@@ -1,6 +1,7 @@
 import { count, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, sessions, users } from "@/db/schema/auth";
+import { invalidateOriginsCache } from "@/middleware/dynamic-cors";
 
 export interface ApplicationWithStats {
   id: string;
@@ -151,6 +152,9 @@ export async function createApplication(input: CreateApplicationInput) {
     })
     .returning();
 
+  // Invalidate CORS cache so new origins take effect
+  invalidateOriginsCache();
+
   return { application: created, secret };
 }
 
@@ -167,6 +171,11 @@ export async function updateApplication(
     .where(eq(applications.id, id))
     .returning();
 
+  // Invalidate CORS cache if origins or active status changed
+  if (input.allowedOrigins !== undefined || input.isActive !== undefined) {
+    invalidateOriginsCache();
+  }
+
   return updated;
 }
 
@@ -175,6 +184,9 @@ export async function deleteApplication(id: string) {
     .delete(applications)
     .where(eq(applications.id, id))
     .returning({ id: applications.id });
+
+  // Invalidate CORS cache
+  invalidateOriginsCache();
 
   return deleted;
 }

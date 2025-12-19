@@ -124,11 +124,25 @@ export function createProxyMiddleware(basePath: string) {
     const method = c.req.method;
 
     // Find matching route
+    logger.debug(
+      { appSlug, method, relativePath },
+      "Looking for matching proxy route"
+    );
+
     const match = await findMatchingRoute(appSlug, method, relativePath);
 
     if (!match) {
-      // No matching route, continue to next handler
-      return next();
+      logger.warn(
+        { appSlug, method, relativePath },
+        "No matching proxy route found"
+      );
+      return c.json(
+        {
+          error: "Not Found",
+          message: `No proxy route configured for ${method} ${relativePath} in app ${appSlug}`,
+        },
+        404
+      );
     }
 
     const { route, remainingPath } = match;
