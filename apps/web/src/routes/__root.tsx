@@ -2,10 +2,12 @@ import {
   createRootRouteWithContext,
   HeadContent,
   Outlet,
+  useLocation,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { ThemeProvider } from "@/components/theme-provider";
 import "../index.css";
+import { Header } from "@/components/layout/header";
 
 // biome-ignore lint/complexity/noBannedTypes: <not important>
 export type RouterAppContext = {};
@@ -31,7 +33,12 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
   }),
 });
 
+const ROUTES_WITHOUT_HEADER = ["/login"];
+
 function RootComponent() {
+  const location = useLocation();
+  const showHeader = !ROUTES_WITHOUT_HEADER.includes(location.pathname);
+
   return (
     <>
       <HeadContent />
@@ -41,8 +48,11 @@ function RootComponent() {
         disableTransitionOnChange
         storageKey="vite-ui-theme"
       >
-        <div className="grid h-svh grid-rows-[auto_1fr]">
-          <Outlet />
+        <div className="flex min-h-svh flex-col">
+          {showHeader && <Header />}
+          <main className="flex-1">
+            <Outlet />
+          </main>
         </div>
 
         <TanStackRouterDevtools position="bottom-left" />

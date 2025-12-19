@@ -27,7 +27,11 @@
   "linter": {
     "rules": {
       "style": {
-        "useConsistentTypeDefinitions": "off"
+        "useConsistentTypeDefinitions": "off",
+        "useFilenamingConvention": "off"
+      },
+      "performance": {
+        "noNamespaceImport": "off"
       }
     }
   }

@@ -1,29 +1,77 @@
-import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
-export const users = pgTable("users", {
+// ============================================================================
+// APPLICATIONS - Core table for multi-tenant application management
+// ============================================================================
+export const applications = pgTable("applications", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  emailVerified: boolean("email_verified").default(false).notNull(),
-  image: text("image"),
+  slug: text("slug").notNull().unique(),
+  secret: text("secret").notNull(), // Hashed API secret for backend auth
+  allowedOrigins: text("allowed_origins"), // JSON array of CORS origins
+  redirectUris: text("redirect_uris"), // JSON array of valid OAuth redirect URIs
+  logo: text("logo"),
+  metadata: text("metadata"), // JSON for additional app config
+  isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
-    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .$onUpdate(() => new Date())
     .notNull(),
-  role: text("role"),
-  banned: boolean("banned").default(false),
-  banReason: text("ban_reason"),
-  banExpires: timestamp("ban_expires"),
 });
 
+// ============================================================================
+// USERS - Extended with application context for multi-tenant isolation
+// ============================================================================
+export const users = pgTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => applications.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    emailVerified: boolean("email_verified").default(false).notNull(),
+    image: text("image"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+    role: text("role"),
+    banned: boolean("banned").default(false),
+    banReason: text("ban_reason"),
+    banExpires: timestamp("ban_expires"),
+  },
+  (table) => ({
+    emailAppUnique: uniqueIndex("users_email_app_unique").on(
+      table.email,
+      table.applicationId
+    ),
+  })
+);
+
+// ============================================================================
+// SESSIONS - Scoped to both user and application
+// ============================================================================
 export const sessions = pgTable("sessions", {
   id: text("id").primaryKey(),
+  applicationId: text("application_id")
+    .notNull()
+    .references(() => applications.id, { onDelete: "cascade" }),
   expiresAt: timestamp("expires_at").notNull(),
   token: text("token").notNull().unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
-    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .defaultNow()
+    .$onUpdate(() => new Date())
     .notNull(),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
@@ -33,25 +81,42 @@ export const sessions = pgTable("sessions", {
   impersonatedBy: text("impersonated_by"),
 });
 
-export const accounts = pgTable("accounts", {
-  id: text("id").primaryKey(),
-  accountId: text("account_id").notNull(),
-  providerId: text("provider_id").notNull(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  accessToken: text("access_token"),
-  refreshToken: text("refresh_token"),
-  idToken: text("id_token"),
-  accessTokenExpiresAt: timestamp("access_token_expires_at"),
-  refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
-  scope: text("scope"),
-  password: text("password"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull(),
-});
+// ============================================================================
+// ACCOUNTS - OAuth/credential accounts scoped to applications
+// ============================================================================
+export const accounts = pgTable(
+  "accounts",
+  {
+    id: text("id").primaryKey(),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => applications.id, { onDelete: "cascade" }),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => ({
+    providerAppUnique: uniqueIndex("accounts_provider_app_unique").on(
+      table.providerId,
+      table.accountId,
+      table.applicationId
+    ),
+  })
+);
 
 export const verifications = pgTable("verifications", {
   id: text("id").primaryKey(),
