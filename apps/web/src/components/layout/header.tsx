@@ -1,5 +1,13 @@
 import { Link } from "@tanstack/react-router";
-import { BookOpen, Home, LogOut, Moon, ShieldCheck, Sun } from "lucide-react";
+import {
+  BookOpen,
+  Building2,
+  Home,
+  LogOut,
+  Moon,
+  ShieldCheck,
+  Sun,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -23,6 +31,7 @@ function getFirstName(name: string): string {
 export function Header() {
   const { theme, setTheme } = useTheme();
   const { data: session } = authClient.useSession();
+  const { data: activeOrg } = authClient.useActiveOrganization();
 
   const handleLogout = async () => {
     try {
@@ -100,6 +109,17 @@ export function Header() {
           <Separator orientation="vertical" />
           {user && (
             <>
+              {activeOrg && (
+                <>
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Building2 className="size-4" />
+                    <span className="hidden text-sm sm:inline-block">
+                      {activeOrg.name}
+                    </span>
+                  </div>
+                  <Separator orientation="vertical" />
+                </>
+              )}
               <div className="ml-2 flex items-center gap-2">
                 <span className="hidden text-sm sm:inline-block">
                   {getFirstName(user.name)}

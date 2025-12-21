@@ -1,10 +1,11 @@
-import { count, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, sessions, users } from "@/db/schema/auth";
 import { invalidateOriginsCache } from "@/middleware/dynamic-cors";
 
 export interface ApplicationWithStats {
   id: string;
+  organizationId: string;
   name: string;
   slug: string;
   allowedOrigins: string | null;
@@ -19,6 +20,7 @@ export interface ApplicationWithStats {
 }
 
 export interface CreateApplicationInput {
+  organizationId: string;
   name: string;
   slug: string;
   allowedOrigins?: string;
@@ -37,10 +39,17 @@ export interface UpdateApplicationInput {
   isActive?: boolean;
 }
 
-export async function listApplications(): Promise<ApplicationWithStats[]> {
+/**
+ * List applications scoped to an organization
+ * SECURITY: Always requires organizationId to prevent data leakage
+ */
+export async function listApplications(
+  organizationId: string
+): Promise<ApplicationWithStats[]> {
   const apps = await db
     .select({
       id: applications.id,
+      organizationId: applications.organizationId,
       name: applications.name,
       slug: applications.slug,
       allowedOrigins: applications.allowedOrigins,
@@ -52,6 +61,7 @@ export async function listApplications(): Promise<ApplicationWithStats[]> {
       updatedAt: applications.updatedAt,
     })
     .from(applications)
+    .where(eq(applications.organizationId, organizationId))
     .orderBy(applications.createdAt);
 
   const userCounts = await db
@@ -84,13 +94,23 @@ export async function listApplications(): Promise<ApplicationWithStats[]> {
   }));
 }
 
+/**
+ * Get application by ID, scoped to organization
+ * SECURITY: Validates organization ownership to prevent unauthorized access
+ */
 export async function getApplication(
-  id: string
+  id: string,
+  organizationId: string
 ): Promise<ApplicationWithStats | null> {
   const [appRecord] = await db
     .select()
     .from(applications)
-    .where(eq(applications.id, id))
+    .where(
+      and(
+        eq(applications.id, id),
+        eq(applications.organizationId, organizationId)
+      )
+    )
     .limit(1);
 
   if (!appRecord) {
@@ -133,6 +153,10 @@ export async function checkSlugExists(
   return excludeId ? existing.id !== excludeId : true;
 }
 
+/**
+ * Create application within an organization
+ * SECURITY: organizationId is required and validated upstream
+ */
 export async function createApplication(input: CreateApplicationInput) {
   const id = crypto.randomUUID();
   const secret = crypto.randomUUID();
@@ -141,6 +165,7 @@ export async function createApplication(input: CreateApplicationInput) {
     .insert(applications)
     .values({
       id,
+      organizationId: input.organizationId,
       name: input.name,
       slug: input.slug,
       secret,
@@ -158,8 +183,13 @@ export async function createApplication(input: CreateApplicationInput) {
   return { application: created, secret };
 }
 
+/**
+ * Update application, scoped to organization
+ * SECURITY: Validates organization ownership before update
+ */
 export async function updateApplication(
   id: string,
+  organizationId: string,
   input: UpdateApplicationInput
 ) {
   const [updated] = await db
@@ -168,7 +198,12 @@ export async function updateApplication(
       ...input,
       updatedAt: new Date(),
     })
-    .where(eq(applications.id, id))
+    .where(
+      and(
+        eq(applications.id, id),
+        eq(applications.organizationId, organizationId)
+      )
+    )
     .returning();
 
   // Invalidate CORS cache if origins or active status changed
@@ -179,10 +214,19 @@ export async function updateApplication(
   return updated;
 }
 
-export async function deleteApplication(id: string) {
+/**
+ * Delete application, scoped to organization
+ * SECURITY: Validates organization ownership before deletion
+ */
+export async function deleteApplication(id: string, organizationId: string) {
   const [deleted] = await db
     .delete(applications)
-    .where(eq(applications.id, id))
+    .where(
+      and(
+        eq(applications.id, id),
+        eq(applications.organizationId, organizationId)
+      )
+    )
     .returning({ id: applications.id });
 
   // Invalidate CORS cache
@@ -191,7 +235,11 @@ export async function deleteApplication(id: string) {
   return deleted;
 }
 
-export async function regenerateSecret(id: string) {
+/**
+ * Regenerate application secret, scoped to organization
+ * SECURITY: Validates organization ownership before regenerating
+ */
+export async function regenerateSecret(id: string, organizationId: string) {
   const newSecret = crypto.randomUUID();
 
   const [updated] = await db
@@ -200,7 +248,12 @@ export async function regenerateSecret(id: string) {
       secret: newSecret,
       updatedAt: new Date(),
     })
-    .where(eq(applications.id, id))
+    .where(
+      and(
+        eq(applications.id, id),
+        eq(applications.organizationId, organizationId)
+      )
+    )
     .returning({ id: applications.id });
 
   return updated ? { secret: newSecret } : null;

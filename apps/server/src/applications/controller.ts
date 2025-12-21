@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { z } from "zod";
+import { auth } from "@/lib/auth";
 import { logger } from "@/utils/logger";
 import {
   checkSlugExists,
@@ -28,9 +29,30 @@ const updateAppSchema = createAppSchema.partial().extend({
   isActive: z.boolean().optional(),
 });
 
+/**
+ * Get active organization ID from session
+ * SECURITY: Returns null if no valid session or no active organization
+ */
+async function getActiveOrganizationId(c: Context): Promise<string | null> {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  // activeOrganizationId is added by organization plugin - cast to access it
+  const extendedSession = session?.session as
+    | { activeOrganizationId?: string }
+    | undefined;
+  return extendedSession?.activeOrganizationId ?? null;
+}
+
 export async function list(c: Context) {
   try {
-    const apps = await listApplications();
+    const organizationId = await getActiveOrganizationId(c);
+    if (!organizationId) {
+      return c.json(
+        { error: "No active organization. Please select an organization." },
+        403
+      );
+    }
+
+    const apps = await listApplications(organizationId);
     return c.json({ applications: apps });
   } catch (error) {
     logger.error({ error }, "Failed to list applications");
@@ -40,8 +62,16 @@ export async function list(c: Context) {
 
 export async function get(c: Context) {
   try {
+    const organizationId = await getActiveOrganizationId(c);
+    if (!organizationId) {
+      return c.json(
+        { error: "No active organization. Please select an organization." },
+        403
+      );
+    }
+
     const id = c.req.param("id");
-    const app = await getApplication(id);
+    const app = await getApplication(id, organizationId);
 
     if (!app) {
       return c.json({ error: "Application not found" }, 404);
@@ -61,6 +91,14 @@ export async function get(c: Context) {
 
 export async function create(c: Context) {
   try {
+    const organizationId = await getActiveOrganizationId(c);
+    if (!organizationId) {
+      return c.json(
+        { error: "No active organization. Please select an organization." },
+        403
+      );
+    }
+
     const body = await c.req.json();
     const parsed = createAppSchema.safeParse(body);
 
@@ -79,10 +117,13 @@ export async function create(c: Context) {
       );
     }
 
-    const { application, secret } = await createApplication(parsed.data);
+    const { application, secret } = await createApplication({
+      ...parsed.data,
+      organizationId,
+    });
 
     logger.info(
-      { applicationId: application.id, slug: application.slug },
+      { applicationId: application.id, slug: application.slug, organizationId },
       "Application created"
     );
 
@@ -95,6 +136,14 @@ export async function create(c: Context) {
 
 export async function update(c: Context) {
   try {
+    const organizationId = await getActiveOrganizationId(c);
+    if (!organizationId) {
+      return c.json(
+        { error: "No active organization. Please select an organization." },
+        403
+      );
+    }
+
     const id = c.req.param("id");
     const body = await c.req.json();
     const parsed = updateAppSchema.safeParse(body);
@@ -106,7 +155,7 @@ export async function update(c: Context) {
       );
     }
 
-    const existing = await getApplication(id);
+    const existing = await getApplication(id, organizationId);
     if (!existing) {
       return c.json({ error: "Application not found" }, 404);
     }
@@ -121,9 +170,9 @@ export async function update(c: Context) {
       }
     }
 
-    const updated = await updateApplication(id, parsed.data);
+    const updated = await updateApplication(id, organizationId, parsed.data);
 
-    logger.info({ applicationId: id }, "Application updated");
+    logger.info({ applicationId: id, organizationId }, "Application updated");
 
     return c.json({
       application: {
@@ -139,19 +188,22 @@ export async function update(c: Context) {
 
 export async function remove(c: Context) {
   try {
-    const id = c.req.param("id");
-
-    if (id === "admin-portal") {
-      return c.json({ error: "Cannot delete system application" }, 403);
+    const organizationId = await getActiveOrganizationId(c);
+    if (!organizationId) {
+      return c.json(
+        { error: "No active organization. Please select an organization." },
+        403
+      );
     }
 
-    const deleted = await deleteApplication(id);
+    const id = c.req.param("id");
+    const deleted = await deleteApplication(id, organizationId);
 
     if (!deleted) {
       return c.json({ error: "Application not found" }, 404);
     }
 
-    logger.info({ applicationId: id }, "Application deleted");
+    logger.info({ applicationId: id, organizationId }, "Application deleted");
 
     return c.json({ success: true });
   } catch (error) {
@@ -162,15 +214,25 @@ export async function remove(c: Context) {
 
 export async function regenerate(c: Context) {
   try {
-    const id = c.req.param("id");
+    const organizationId = await getActiveOrganizationId(c);
+    if (!organizationId) {
+      return c.json(
+        { error: "No active organization. Please select an organization." },
+        403
+      );
+    }
 
-    const result = await regenerateSecret(id);
+    const id = c.req.param("id");
+    const result = await regenerateSecret(id, organizationId);
 
     if (!result) {
       return c.json({ error: "Application not found" }, 404);
     }
 
-    logger.info({ applicationId: id }, "Application secret regenerated");
+    logger.info(
+      { applicationId: id, organizationId },
+      "Application secret regenerated"
+    );
 
     return c.json(result);
   } catch (error) {

@@ -7,10 +7,27 @@ import {
 } from "drizzle-orm/pg-core";
 
 // ============================================================================
-// APPLICATIONS - Core table for multi-tenant application management
+// ORGANIZATIONS - Workspace containers for applications (Better Auth plugin)
+// Must be defined before applications for foreign key reference
+// ============================================================================
+export const organizations = pgTable("organizations", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  createdAt: timestamp("created_at").notNull(),
+  metadata: text("metadata"),
+});
+
+// ============================================================================
+// APPLICATIONS - Scoped to organizations for multi-tenant isolation
+// Each organization manages their own applications
 // ============================================================================
 export const applications = pgTable("applications", {
   id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   secret: text("secret").notNull(), // Hashed API secret for backend auth
@@ -48,15 +65,18 @@ export const applicationRoutes = pgTable("application_routes", {
 });
 
 // ============================================================================
-// USERS - Extended with application context for multi-tenant isolation
+// USERS - Admin portal users have NULL applicationId (org-based)
+//         Client app users have applicationId set (app-scoped)
 // ============================================================================
 export const users = pgTable(
   "users",
   {
     id: text("id").primaryKey(),
-    applicationId: text("application_id")
-      .notNull()
-      .references(() => applications.id, { onDelete: "cascade" }),
+    // NULL for admin portal users (organization-based auth)
+    // Set for client app users (application-scoped auth)
+    applicationId: text("application_id").references(() => applications.id, {
+      onDelete: "cascade",
+    }),
     name: text("name").notNull(),
     email: text("email").notNull(),
     emailVerified: boolean("email_verified").default(false).notNull(),
@@ -72,6 +92,7 @@ export const users = pgTable(
     banExpires: timestamp("ban_expires"),
   },
   (table) => ({
+    // Email unique per application (NULL applicationId = admin portal)
     emailAppUnique: uniqueIndex("users_email_app_unique").on(
       table.email,
       table.applicationId
@@ -84,9 +105,14 @@ export const users = pgTable(
 // ============================================================================
 export const sessions = pgTable("sessions", {
   id: text("id").primaryKey(),
-  applicationId: text("application_id")
-    .notNull()
-    .references(() => applications.id, { onDelete: "cascade" }),
+  // NULL for admin portal sessions (organization-based)
+  applicationId: text("application_id").references(() => applications.id, {
+    onDelete: "cascade",
+  }),
+  activeOrganizationId: text("active_organization_id").references(
+    () => organizations.id,
+    { onDelete: "set null" }
+  ),
   expiresAt: timestamp("expires_at").notNull(),
   token: text("token").notNull().unique(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -109,9 +135,10 @@ export const accounts = pgTable(
   "accounts",
   {
     id: text("id").primaryKey(),
-    applicationId: text("application_id")
-      .notNull()
-      .references(() => applications.id, { onDelete: "cascade" }),
+    // NULL for admin portal accounts (organization-based)
+    applicationId: text("application_id").references(() => applications.id, {
+      onDelete: "cascade",
+    }),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
     userId: text("user_id")
@@ -131,6 +158,7 @@ export const accounts = pgTable(
       .notNull(),
   },
   (table) => ({
+    // Provider+Account unique per application (NULL = admin portal)
     providerAppUnique: uniqueIndex("accounts_provider_app_unique").on(
       table.providerId,
       table.accountId,
@@ -156,15 +184,6 @@ export const jwks = pgTable("jwks", {
   publicKey: text("public_key").notNull(),
   privateKey: text("private_key").notNull(),
   createdAt: timestamp("created_at").notNull(),
-});
-
-export const organizations = pgTable("organizations", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  slug: text("slug").notNull().unique(),
-  logo: text("logo"),
-  createdAt: timestamp("created_at").notNull(),
-  metadata: text("metadata"),
 });
 
 export const members = pgTable("members", {

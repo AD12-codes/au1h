@@ -37,7 +37,7 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      "x-app-id": "admin-portal",
+      // Admin portal uses organization-based auth, no x-app-id needed
       ...options?.headers,
     },
   });

@@ -159,7 +159,6 @@ export function ApplicationsTable({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-destructive"
-                    disabled={app.id === "admin-portal"}
                     onClick={() => onDelete(app)}
                   >
                     <Trash2 className="mr-2 size-4" />
