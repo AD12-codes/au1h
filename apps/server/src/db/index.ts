@@ -14,6 +14,11 @@ const getDatabaseUrl = () => {
 
 const pool = new Pool({
   connectionString: getDatabaseUrl(),
+  // The schema uses `timestamp` (without time zone). Better Auth and Drizzle
+  // write UTC wall-clock values, so `DEFAULT now()` must produce UTC too;
+  // otherwise rows created by the database default drift by the server's
+  // local offset.
+  options: "-c timezone=UTC",
   max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30_000, // Close idle clients after 30 seconds
   connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established

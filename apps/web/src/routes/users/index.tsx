@@ -1,14 +1,10 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, Users } from "lucide-react";
 import { useState } from "react";
+import { EmptyState } from "@/components/shared/empty-state";
+import { TableSkeleton } from "@/components/shared/loading";
+import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -17,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
 import { BanUserDialog } from "@/components/users/ban-user-dialog";
 import { UsersTable } from "@/components/users/users-table";
 import { useApplications } from "@/hooks/use-applications";
@@ -28,16 +23,6 @@ import {
   useUsers,
 } from "@/hooks/use-users";
 import { authClient } from "@/lib/auth-client";
-
-function LoadingSkeleton() {
-  return (
-    <div className="space-y-4">
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
-    </div>
-  );
-}
 
 export const Route = createFileRoute("/users/")({
   component: UsersPage,
@@ -51,13 +36,14 @@ export const Route = createFileRoute("/users/")({
 
 function UsersPage() {
   const [search, setSearch] = useState("");
-  const [applicationId, setApplicationId] = useState<string>("");
+  const [query, setQuery] = useState("");
+  const [applicationId, setApplicationId] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [banUser, setBanUser] = useState<User | null>(null);
 
-  const { data: usersData, isLoading: usersLoading } = useUsers({
-    search: search || undefined,
-    applicationId: applicationId || undefined,
+  const { data: usersData, isLoading } = useUsers({
+    search: query || undefined,
+    applicationId: applicationId === "all" ? undefined : applicationId,
     page,
     limit: 20,
   });
@@ -69,109 +55,111 @@ function UsersPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
+    setQuery(search.trim());
   };
 
-  const handleUnban = async (user: User) => {
-    await unbanMutation.mutateAsync(user.id);
-  };
-
-  const handleRevokeSessions = async (user: User) => {
-    await revokeAllMutation.mutateAsync(user.id);
-  };
+  const total = usersData?.total ?? 0;
 
   return (
-    <div className="container mx-auto py-8">
-      <div className="mb-8">
-        <h1 className="font-bold text-3xl tracking-tight">Users</h1>
-        <p className="text-muted-foreground">
-          Manage users across all applications
-        </p>
-      </div>
+    <>
+      <PageHeader
+        description={
+          isLoading
+            ? "Loading…"
+            : `${total} user${total === 1 ? "" : "s"} across your applications and workspace.`
+        }
+        title="Users"
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>All Users</CardTitle>
-          <CardDescription>
-            {usersData?.total || 0} user{usersData?.total !== 1 && "s"} total
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="mb-6 flex gap-4" onSubmit={handleSearch}>
-            <div className="relative flex-1">
-              <Search className="-translate-y-1/2 absolute top-1/2 left-3 size-4 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or email..."
-                value={search}
-              />
-            </div>
-            <Select
-              onValueChange={(value) => {
-                setApplicationId(value === "all" ? "" : value);
-                setPage(1);
-              }}
-              value={applicationId}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="All Applications" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Applications</SelectItem>
-                {applications?.map((app) => (
-                  <SelectItem key={app.id} value={app.id}>
-                    {app.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="submit">Search</Button>
-          </form>
+      <form
+        className="mb-3 flex flex-wrap items-center gap-2"
+        onSubmit={handleSearch}
+      >
+        <div className="relative min-w-[240px] flex-1">
+          <Search className="-translate-y-1/2 absolute top-1/2 left-2.5 size-3.5 text-muted-foreground" />
+          <Input
+            className="pl-8"
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name or email…"
+            value={search}
+          />
+        </div>
+        <Select
+          onValueChange={(value) => {
+            setApplicationId(value);
+            setPage(1);
+          }}
+          value={applicationId}
+        >
+          <SelectTrigger className="h-8 w-[200px] text-[13px]" size="sm">
+            <SelectValue placeholder="All applications" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All applications</SelectItem>
+            {applications?.map((app) => (
+              <SelectItem key={app.id} value={app.id}>
+                {app.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button size="sm" type="submit" variant="outline">
+          Search
+        </Button>
+      </form>
 
-          {usersLoading && <LoadingSkeleton />}
-          {!(usersLoading || usersData?.users.length) && (
-            <div className="py-8 text-center text-muted-foreground">
-              No users found
-            </div>
-          )}
-          {!usersLoading && usersData?.users.length && (
-            <>
-              <UsersTable
-                onBan={setBanUser}
-                onRevokeSessions={handleRevokeSessions}
-                onUnban={handleUnban}
-                users={usersData.users}
-              />
-
-              {usersData.totalPages > 1 && (
-                <div className="mt-4 flex items-center justify-between">
-                  <p className="text-muted-foreground text-sm">
-                    Page {usersData.page} of {usersData.totalPages}
-                  </p>
-                  <div className="flex gap-2">
-                    <Button
-                      disabled={page === 1}
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      size="sm"
-                      variant="outline"
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      disabled={page >= usersData.totalPages}
-                      onClick={() => setPage((p) => p + 1)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+      {isLoading && <TableSkeleton rows={6} />}
+      {!(isLoading || usersData?.users.length) && (
+        <EmptyState
+          description={
+            query
+              ? `Nothing matches "${query}".`
+              : "Users appear here as soon as someone signs up in one of your applications."
+          }
+          icon={Users}
+          title="No users found"
+        />
+      )}
+      {!isLoading && usersData?.users.length ? (
+        <>
+          <UsersTable
+            onBan={setBanUser}
+            onRevokeSessions={(user) => revokeAllMutation.mutateAsync(user.id)}
+            onUnban={(user) => unbanMutation.mutateAsync(user.id)}
+            users={usersData.users}
+          />
+          <div className="mt-3 flex items-center justify-between text-muted-foreground text-xs">
+            <p>
+              Showing {(usersData.page - 1) * usersData.limit + 1}–
+              {Math.min(usersData.page * usersData.limit, usersData.total)} of{" "}
+              {usersData.total}
+            </p>
+            {usersData.totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <Button
+                  disabled={page === 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  size="icon-sm"
+                  variant="outline"
+                >
+                  <ChevronLeft />
+                </Button>
+                <span className="px-2 tabular-nums">
+                  {usersData.page} / {usersData.totalPages}
+                </span>
+                <Button
+                  disabled={page >= usersData.totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                  size="icon-sm"
+                  variant="outline"
+                >
+                  <ChevronRight />
+                </Button>
+              </div>
+            )}
+          </div>
+        </>
+      ) : null}
 
       <BanUserDialog
         onOpenChange={(open) => {
@@ -182,6 +170,6 @@ function UsersPage() {
         open={!!banUser}
         user={banUser}
       />
-    </div>
+    </>
   );
 }

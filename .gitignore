@@ -50,3 +50,6 @@ tmp
 temp
 # redis persistence written by a locally started redis-server
 dump.rdb
+
+# local, uncommitted notes
+*.local.md

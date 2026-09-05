@@ -1,19 +1,14 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { AppWindow, Plus } from "lucide-react";
 import { useState } from "react";
 import { ApplicationsTable } from "@/components/applications/applications-table";
 import { CreateApplicationDialog } from "@/components/applications/create-application-dialog";
 import { DeleteApplicationDialog } from "@/components/applications/delete-application-dialog";
 import { SecretDialog } from "@/components/applications/secret-dialog";
+import { EmptyState } from "@/components/shared/empty-state";
+import { TableSkeleton } from "@/components/shared/loading";
+import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useApplications, useRegenerateSecret } from "@/hooks/use-applications";
 import type { Application } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
@@ -27,24 +22,6 @@ export const Route = createFileRoute("/applications/")({
     }
   },
 });
-
-function LoadingSkeleton() {
-  return (
-    <div className="space-y-4">
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
-      <Skeleton className="h-12 w-full" />
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="py-8 text-center text-muted-foreground">
-      No applications yet. Create your first one!
-    </div>
-  );
-}
 
 function ApplicationsPage() {
   const { data: applications, isLoading } = useApplications();
@@ -63,12 +40,25 @@ function ApplicationsPage() {
     }
   };
 
+  const count = applications?.length ?? 0;
+
   const renderContent = () => {
     if (isLoading) {
-      return <LoadingSkeleton />;
+      return <TableSkeleton />;
     }
     if (!applications?.length) {
-      return <EmptyState />;
+      return (
+        <EmptyState
+          action={
+            <Button onClick={() => setIsCreateOpen(true)} size="sm">
+              <Plus /> New application
+            </Button>
+          }
+          description="Each application gets its own slug, users, sessions and secret."
+          icon={AppWindow}
+          title="No applications yet"
+        />
+      );
     }
     return (
       <ApplicationsTable
@@ -80,36 +70,27 @@ function ApplicationsPage() {
   };
 
   return (
-    <div className="container mx-auto py-8">
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <h1 className="font-bold text-3xl tracking-tight">Applications</h1>
-          <p className="text-muted-foreground">
-            Manage applications that use au1h for authentication
-          </p>
-        </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Plus className="mr-2 size-4" />
-          New Application
-        </Button>
-      </div>
+    <>
+      <PageHeader
+        actions={
+          <Button onClick={() => setIsCreateOpen(true)} size="sm">
+            <Plus /> New application
+          </Button>
+        }
+        description={
+          isLoading
+            ? "Loading…"
+            : `${count} application${count === 1 ? "" : "s"} registered in this workspace.`
+        }
+        title="Applications"
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>All Applications</CardTitle>
-          <CardDescription>
-            {applications?.length || 0} application
-            {applications?.length !== 1 && "s"} registered
-          </CardDescription>
-        </CardHeader>
-        <CardContent>{renderContent()}</CardContent>
-      </Card>
+      {renderContent()}
 
       <CreateApplicationDialog
         onOpenChange={setIsCreateOpen}
         open={isCreateOpen}
       />
-
       <DeleteApplicationDialog
         application={deleteApp}
         onOpenChange={(open) => {
@@ -119,8 +100,7 @@ function ApplicationsPage() {
         }}
         open={!!deleteApp}
       />
-
       <SecretDialog onClose={() => setNewSecret(null)} secret={newSecret} />
-    </div>
+    </>
   );
 }

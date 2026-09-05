@@ -36,19 +36,19 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 
   return (
     <div className="relative">
-      <pre className="overflow-x-auto rounded-lg bg-muted p-4 text-sm">
+      <pre className="overflow-x-auto rounded-md border bg-muted/50 p-3 text-xs leading-relaxed">
         <code className={`language-${language}`}>{code}</code>
       </pre>
       <Button
-        className="absolute top-2 right-2 size-8"
+        className="absolute top-1.5 right-1.5"
         onClick={handleCopy}
-        size="icon"
+        size="icon-sm"
         variant="ghost"
       >
         {copied ? (
-          <Check className="size-4 text-green-500" />
+          <Check className="size-3.5 text-success" />
         ) : (
-          <Copy className="size-4" />
+          <Copy className="size-3.5" />
         )}
       </Button>
     </div>
@@ -57,17 +57,17 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 
 function DocsPage() {
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
-      <div className="mb-8">
-        <div className="mb-2 flex items-center gap-2 text-muted-foreground text-sm">
-          <BookOpen className="size-4" />
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-6">
+        <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground text-xs">
+          <BookOpen className="size-3.5" />
           <span>Documentation</span>
         </div>
-        <h1 className="mb-4 font-bold text-4xl tracking-tight">
-          au1h Integration Guide
+        <h1 className="font-semibold text-xl tracking-tight">
+          Integration guide
         </h1>
-        <p className="text-lg text-muted-foreground">
-          Learn how to integrate au1h authentication into your applications.
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          How to sign users in against au1h and verify them on your backend.
         </p>
       </div>
 
@@ -75,8 +75,8 @@ function DocsPage() {
       <div className="mb-8 grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <Shield className="mb-2 size-8 text-primary" />
-            <CardTitle className="text-lg">Secure by Default</CardTitle>
+            <Shield className="mb-1 size-5 text-primary" />
+            <CardTitle>Secure by Default</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground text-sm">
@@ -86,8 +86,8 @@ function DocsPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <Zap className="mb-2 size-8 text-primary" />
-            <CardTitle className="text-lg">Two Patterns</CardTitle>
+            <Zap className="mb-1 size-5 text-primary" />
+            <CardTitle>Two Patterns</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground text-sm">
@@ -97,8 +97,8 @@ function DocsPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <Server className="mb-2 size-8 text-primary" />
-            <CardTitle className="text-lg">Any Backend</CardTitle>
+            <Server className="mb-1 size-5 text-primary" />
+            <CardTitle>Any Backend</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground text-sm">

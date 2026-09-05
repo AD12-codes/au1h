@@ -2,6 +2,7 @@ import { Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import type { UpdateApplicationInput } from "@/lib/api";
 
 interface SettingsFormProps {
@@ -31,52 +32,56 @@ export function SettingsForm({
   };
 
   return (
-    <form className="space-y-6" onSubmit={onSubmit}>
+    <form className="space-y-4" onSubmit={onSubmit}>
       {error && (
-        <div className="rounded-md bg-destructive/10 p-3 text-destructive text-sm">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
           {error}
         </div>
       )}
       {success && (
-        <div className="rounded-md bg-green-500/10 p-3 text-green-600 text-sm">
-          Application updated successfully!
+        <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-[13px] text-success">
+          Saved.
         </div>
       )}
 
-      <div className="space-y-2">
-        <Label htmlFor="name">Name</Label>
-        <Input
-          id="name"
-          onChange={(e) => updateField("name", e.target.value)}
-          required
-          value={formData.name}
-        />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="name">Name</Label>
+          <Input
+            id="name"
+            onChange={(e) => updateField("name", e.target.value)}
+            required
+            value={formData.name}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="slug">Slug</Label>
+          <Input
+            className="font-mono"
+            disabled={isSystemApp}
+            id="slug"
+            onChange={(e) => updateField("slug", e.target.value)}
+            pattern="^[a-z0-9-]+$"
+            required
+            title="Lowercase letters, numbers, and hyphens only"
+            value={formData.slug}
+          />
+          {isSystemApp && (
+            <p className="text-muted-foreground text-xs">
+              System app slug cannot be changed
+            </p>
+          )}
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="slug">Slug</Label>
-        <Input
-          disabled={isSystemApp}
-          id="slug"
-          onChange={(e) => updateField("slug", e.target.value)}
-          pattern="^[a-z0-9-]+$"
-          required
-          title="Lowercase letters, numbers, and hyphens only"
-          value={formData.slug}
-        />
-        {isSystemApp && (
-          <p className="text-muted-foreground text-xs">
-            System app slug cannot be changed
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor="allowedOrigins">Allowed Origins</Label>
         <Input
+          className="font-mono"
           id="allowedOrigins"
           onChange={(e) => updateField("allowedOrigins", e.target.value)}
-          placeholder="http://localhost:3000,https://myapp.com"
+          placeholder="http://localhost:3000, https://myapp.com"
           value={formData.allowedOrigins || ""}
         />
         <p className="text-muted-foreground text-xs">
@@ -84,9 +89,10 @@ export function SettingsForm({
         </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor="redirectUris">Redirect URIs</Label>
         <Input
+          className="font-mono"
           id="redirectUris"
           onChange={(e) => updateField("redirectUris", e.target.value)}
           placeholder="http://localhost:3000/callback"
@@ -97,7 +103,7 @@ export function SettingsForm({
         </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor="logo">Logo URL</Label>
         <Input
           id="logo"
@@ -108,33 +114,29 @@ export function SettingsForm({
         />
       </div>
 
-      <div className="flex items-center gap-2">
-        <input
-          checked={formData.isActive}
-          className="size-4"
+      <div className="flex items-center justify-between rounded-md border px-3 py-2">
+        <div>
+          <Label htmlFor="isActive">Active</Label>
+          <p className="mt-0.5 text-muted-foreground text-xs">
+            {isSystemApp
+              ? "System app cannot be deactivated"
+              : "Inactive applications reject every sign-in and token."}
+          </p>
+        </div>
+        <Switch
+          checked={!!formData.isActive}
           disabled={isSystemApp}
           id="isActive"
-          onChange={(e) => updateField("isActive", e.target.checked)}
-          type="checkbox"
+          onCheckedChange={(checked) => updateField("isActive", checked)}
         />
-        <Label htmlFor="isActive">Active</Label>
-        {isSystemApp && (
-          <span className="text-muted-foreground text-xs">
-            (System app cannot be deactivated)
-          </span>
-        )}
       </div>
 
-      <Button disabled={isLoading} type="submit">
-        {isLoading ? (
-          "Saving..."
-        ) : (
-          <>
-            <Save className="mr-2 size-4" />
-            Save Changes
-          </>
-        )}
-      </Button>
+      <div className="flex justify-end">
+        <Button disabled={isLoading} size="sm" type="submit">
+          <Save />
+          {isLoading ? "Saving…" : "Save changes"}
+        </Button>
+      </div>
     </form>
   );
 }

@@ -1,5 +1,16 @@
-import { MoreHorizontal, Pause, Pencil, Play, Trash2 } from "lucide-react";
+import {
+  MoreHorizontal,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Route,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
+import { EmptyState } from "@/components/shared/empty-state";
+import { Mono } from "@/components/shared/mono";
+import { ActiveBadge } from "@/components/shared/status-badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,7 +21,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -29,13 +39,38 @@ import {
 } from "@/components/ui/table";
 import type { AppRoute } from "@/hooks/use-routes";
 import { useDeleteRoute, useToggleRoute } from "@/hooks/use-routes";
+import { cn } from "@/lib/utils";
 
 interface RoutesTableProps {
   routes: AppRoute[];
   onEdit: (route: AppRoute) => void;
+  onAdd?: () => void;
 }
 
-export function RoutesTable({ routes, onEdit }: RoutesTableProps) {
+const METHOD_COLOR: Record<string, string> = {
+  GET: "text-success",
+  POST: "text-info",
+  PUT: "text-warning",
+  PATCH: "text-warning",
+  DELETE: "text-destructive",
+  HEAD: "text-muted-foreground",
+  OPTIONS: "text-muted-foreground",
+};
+
+function Method({ method }: { method: string }) {
+  return (
+    <span
+      className={cn(
+        "font-medium font-mono text-[11px]",
+        METHOD_COLOR[method] ?? "text-muted-foreground"
+      )}
+    >
+      {method}
+    </span>
+  );
+}
+
+export function RoutesTable({ routes, onEdit, onAdd }: RoutesTableProps) {
   const [deleteRoute, setDeleteRoute] = useState<AppRoute | null>(null);
   const deleteMutation = useDeleteRoute();
   const toggleMutation = useToggleRoute();
@@ -48,104 +83,107 @@ export function RoutesTable({ routes, onEdit }: RoutesTableProps) {
     setDeleteRoute(null);
   };
 
-  const handleToggle = async (route: AppRoute) => {
-    await toggleMutation.mutateAsync({
-      id: route.id,
-      isActive: !route.isActive,
-    });
-  };
+  const handleToggle = (route: AppRoute) =>
+    toggleMutation.mutateAsync({ id: route.id, isActive: !route.isActive });
 
   if (routes.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed p-8 text-center">
-        <p className="text-muted-foreground">No proxy routes configured yet.</p>
-        <p className="mt-1 text-muted-foreground text-sm">
-          Add a route to start proxying requests to your backend services.
-        </p>
-      </div>
+      <EmptyState
+        action={
+          onAdd && (
+            <Button onClick={onAdd} size="sm" variant="outline">
+              <Plus /> Add route
+            </Button>
+          )
+        }
+        description="Map a path pattern like /todos/* to your backend URL. au1h authenticates the caller and forwards the request with trusted user headers."
+        icon={Route}
+        title="No proxy routes"
+      />
     );
   }
 
   return (
     <>
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Path Pattern</TableHead>
-              <TableHead>Backend URL</TableHead>
-              <TableHead>Methods</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-[70px]" />
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Pattern</TableHead>
+            <TableHead>Backend</TableHead>
+            <TableHead>Methods</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="w-10" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {routes.map((route) => (
+            <TableRow key={route.id}>
+              <TableCell className="font-medium">{route.name}</TableCell>
+              <TableCell>
+                <Mono>{route.pathPattern}</Mono>
+                {!route.stripPrefix && (
+                  <span
+                    className="ml-1.5 text-muted-foreground text-xs"
+                    title="The matched prefix is kept when forwarding"
+                  >
+                    keep prefix
+                  </span>
+                )}
+              </TableCell>
+              <TableCell
+                className="max-w-[240px] truncate font-mono text-muted-foreground text-xs"
+                title={route.backendUrl}
+              >
+                {route.backendUrl}
+              </TableCell>
+              <TableCell>
+                <div className="flex flex-wrap gap-1.5">
+                  {route.methods.map((method) => (
+                    <Method key={method} method={method} />
+                  ))}
+                </div>
+              </TableCell>
+              <TableCell>
+                <ActiveBadge active={route.isActive} />
+              </TableCell>
+              <TableCell>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="icon-sm" variant="ghost">
+                      <MoreHorizontal className="size-4" />
+                      <span className="sr-only">Open menu</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => onEdit(route)}>
+                      <Pencil /> Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleToggle(route)}>
+                      {route.isActive ? (
+                        <>
+                          <Pause /> Disable
+                        </>
+                      ) : (
+                        <>
+                          <Play /> Enable
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setDeleteRoute(route)}
+                      variant="destructive"
+                    >
+                      <Trash2 /> Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {routes.map((route) => (
-              <TableRow key={route.id}>
-                <TableCell className="font-medium">{route.name}</TableCell>
-                <TableCell>
-                  <code className="rounded bg-muted px-1.5 py-0.5 text-sm">
-                    {route.pathPattern}
-                  </code>
-                </TableCell>
-                <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">
-                  {route.backendUrl}
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {route.methods.map((method) => (
-                      <MethodBadge key={method} method={method} />
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <Badge variant={route.isActive ? "default" : "secondary"}>
-                    {route.isActive ? "Active" : "Inactive"}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button className="size-8" size="icon" variant="ghost">
-                        <MoreHorizontal className="size-4" />
-                        <span className="sr-only">Open menu</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => onEdit(route)}>
-                        <Pencil className="mr-2 size-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleToggle(route)}>
-                        {route.isActive ? (
-                          <>
-                            <Pause className="mr-2 size-4" />
-                            Disable
-                          </>
-                        ) : (
-                          <>
-                            <Play className="mr-2 size-4" />
-                            Enable
-                          </>
-                        )}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => setDeleteRoute(route)}
-                      >
-                        <Trash2 className="mr-2 size-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+          ))}
+        </TableBody>
+      </Table>
 
       <AlertDialog
         onOpenChange={() => setDeleteRoute(null)}
@@ -153,10 +191,10 @@ export function RoutesTable({ routes, onEdit }: RoutesTableProps) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Route</AlertDialogTitle>
+            <AlertDialogTitle>Delete route</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the route "{deleteRoute?.name}"?
-              This action cannot be undone.
+              Delete "{deleteRoute?.name}"? Requests to{" "}
+              <Mono>{deleteRoute?.pathPattern}</Mono> will start returning 404.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -171,21 +209,5 @@ export function RoutesTable({ routes, onEdit }: RoutesTableProps) {
         </AlertDialogContent>
       </AlertDialog>
     </>
-  );
-}
-
-function MethodBadge({ method }: { method: string }) {
-  const variants: Record<string, "default" | "secondary" | "outline"> = {
-    GET: "outline",
-    POST: "default",
-    PUT: "secondary",
-    PATCH: "secondary",
-    DELETE: "destructive" as "default",
-  };
-
-  return (
-    <Badge className="text-xs" variant={variants[method] || "outline"}>
-      {method}
-    </Badge>
   );
 }

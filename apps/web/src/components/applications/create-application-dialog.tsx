@@ -77,13 +77,13 @@ export function CreateApplicationDialog({
             </div>
             <div className="space-y-1">
               <Label>Slug (use this as x-app-id)</Label>
-              <code className="block rounded bg-muted px-3 py-2">
+              <code className="block rounded-md border bg-muted/50 px-3 py-2 font-mono text-[13px]">
                 {formData.slug}
               </code>
             </div>
             <div className="space-y-1">
               <Label>Secret</Label>
-              <code className="block break-all rounded bg-muted px-3 py-2 font-mono text-sm">
+              <code className="block break-all rounded-md border bg-muted/50 px-3 py-2 font-mono text-[13px]">
                 {createdSecret}
               </code>
             </div>
@@ -105,15 +105,15 @@ export function CreateApplicationDialog({
             Register a new application to use au1h authentication.
           </DialogDescription>
         </DialogHeader>
-        <form className="space-y-4" onSubmit={handleSubmit}>
+        <form className="space-y-3.5" onSubmit={handleSubmit}>
           {createMutation.error && (
-            <div className="rounded-md bg-destructive/10 p-3 text-destructive text-sm">
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
               {createMutation.error instanceof Error
                 ? createMutation.error.message
                 : "Failed to create application"}
             </div>
           )}
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="name">Name</Label>
             <Input
               id="name"
@@ -130,9 +130,10 @@ export function CreateApplicationDialog({
               value={formData.name}
             />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="slug">Slug</Label>
             <Input
+              className="font-mono"
               id="slug"
               onChange={(e) => {
                 setSlugManuallyEdited(true);
@@ -148,7 +149,7 @@ export function CreateApplicationDialog({
               Used as the x-app-id header value
             </p>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="allowedOrigins">Allowed Origins</Label>
             <Input
               id="allowedOrigins"
@@ -165,7 +166,7 @@ export function CreateApplicationDialog({
               Comma-separated list of allowed CORS origins
             </p>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="redirectUris">Redirect URIs</Label>
             <Input
               id="redirectUris"

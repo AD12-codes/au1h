@@ -64,7 +64,7 @@ export function BanUserDialog({
         </DialogHeader>
 
         {banMutation.error && (
-          <div className="rounded-md bg-destructive/10 p-3 text-destructive text-sm">
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
             {banMutation.error instanceof Error
               ? banMutation.error.message
               : "Failed to ban user"}
@@ -72,7 +72,7 @@ export function BanUserDialog({
         )}
 
         <div className="space-y-4">
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="reason">Reason (optional)</Label>
             <Input
               id="reason"
@@ -81,7 +81,7 @@ export function BanUserDialog({
               value={reason}
             />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="expiresAt">Ban Expires (optional)</Label>
             <Input
               id="expiresAt"

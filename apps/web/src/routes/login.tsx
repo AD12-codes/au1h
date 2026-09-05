@@ -87,35 +87,30 @@ function RouteComponent() {
     >
       <div className="flex min-h-screen items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <div className="mb-8 flex flex-col items-center gap-8">
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-primary/10 p-3 ring-1 ring-primary/20">
-                <ShieldCheck
-                  className="size-8 text-primary"
-                  strokeWidth={2.5}
-                />
-              </div>
+          <div className="mb-6 flex flex-col items-center gap-4">
+            <div className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground shadow-md">
+              <ShieldCheck className="size-5" strokeWidth={2.5} />
             </div>
-            <div className="space-y-2 text-center">
-              <h1 className="font-bold text-4xl text-foreground tracking-tight">
+            <div className="space-y-1 text-center">
+              <h1 className="font-semibold text-2xl text-foreground tracking-tight">
                 au1h
               </h1>
-              <p className="text-muted-foreground text-sm">
-                Centralized Authentication Platform
+              <p className="text-[13px] text-muted-foreground">
+                Auth for all of your apps, in one place.
               </p>
             </div>
           </div>
 
-          <Card className="border-border shadow-lg">
-            <CardHeader className="space-y-2 pb-4 text-center">
-              <CardTitle className="text-2xl">Welcome back</CardTitle>
+          <Card className="border-border/80 bg-card/90 shadow-xl backdrop-blur">
+            <CardHeader className="text-center">
+              <CardTitle className="text-base">Welcome back</CardTitle>
               <CardDescription className="text-muted-foreground">
                 Sign in to access the admin portal
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 pt-2">
+            <CardContent className="space-y-4">
               {error && (
-                <div className="rounded-md bg-destructive/10 p-3 text-destructive text-sm">
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
                   {error}
                 </div>
               )}
@@ -130,7 +125,7 @@ function RouteComponent() {
               >
                 <form.Field name="email">
                   {(field) => (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <Label htmlFor="email">Email</Label>
                       <Input
                         disabled={isLoading !== null}
@@ -147,7 +142,7 @@ function RouteComponent() {
 
                 <form.Field name="password">
                   {(field) => (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <Label htmlFor="password">Password</Label>
                       <Input
                         disabled={isLoading !== null}
@@ -163,7 +158,7 @@ function RouteComponent() {
                 </form.Field>
 
                 <Button
-                  className="h-12 w-full font-medium text-base"
+                  className="w-full"
                   disabled={isLoading !== null}
                   size="lg"
                   type="submit"
@@ -183,16 +178,16 @@ function RouteComponent() {
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t" />
                 </div>
-                <div className="relative flex justify-center text-xs uppercase">
+                <div className="relative flex justify-center text-[11px] uppercase tracking-wider">
                   <span className="bg-card px-2 text-muted-foreground">
-                    Or continue with
+                    or continue with
                   </span>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <Button
-                  className="h-12"
+                  className="bg-card"
                   disabled={isLoading !== null}
                   onClick={() => handleSocialSignIn("github")}
                   variant="outline"
@@ -201,13 +196,13 @@ function RouteComponent() {
                     <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                   ) : (
                     <>
-                      <Github className="size-5" />
+                      <Github className="size-4" />
                       GitHub
                     </>
                   )}
                 </Button>
                 <Button
-                  className="h-12"
+                  className="bg-card"
                   disabled={isLoading !== null}
                   onClick={() => handleSocialSignIn("google")}
                   variant="outline"
@@ -216,7 +211,7 @@ function RouteComponent() {
                     <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                   ) : (
                     <>
-                      <svg className="size-5" viewBox="0 0 24 24">
+                      <svg className="size-4" viewBox="0 0 24 24">
                         <title>Google</title>
                         <path
                           d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -241,7 +236,7 @@ function RouteComponent() {
                 </Button>
               </div>
 
-              <div className="text-center text-muted-foreground text-sm">
+              <div className="text-center text-[13px] text-muted-foreground">
                 Don't have an account?{" "}
                 <Link
                   className="font-medium text-primary hover:underline"

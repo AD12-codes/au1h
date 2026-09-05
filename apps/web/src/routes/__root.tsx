@@ -7,7 +7,7 @@ import {
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { ThemeProvider } from "@/components/theme-provider";
 import "../index.css";
-import { Header } from "@/components/layout/header";
+import { AppShell } from "@/components/layout/app-shell";
 
 // biome-ignore lint/complexity/noBannedTypes: <not important>
 export type RouterAppContext = {};
@@ -21,7 +21,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
       },
       {
         name: "description",
-        content: "au1h is a web application",
+        content: "au1h admin portal",
       },
     ],
     links: [
@@ -33,11 +33,12 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
   }),
 });
 
-const ROUTES_WITHOUT_HEADER = ["/login"];
+// Full-bleed pages that render their own chrome.
+const BARE_ROUTES = new Set(["/", "/login", "/register"]);
 
 function RootComponent() {
   const location = useLocation();
-  const showHeader = !ROUTES_WITHOUT_HEADER.includes(location.pathname);
+  const bare = BARE_ROUTES.has(location.pathname);
 
   return (
     <>
@@ -48,14 +49,16 @@ function RootComponent() {
         disableTransitionOnChange
         storageKey="vite-ui-theme"
       >
-        <div className="flex min-h-svh flex-col">
-          {showHeader && <Header />}
-          <main className="flex-1">
+        {bare ? (
+          <Outlet />
+        ) : (
+          <AppShell>
             <Outlet />
-          </main>
-        </div>
-
-        <TanStackRouterDevtools position="bottom-left" />
+          </AppShell>
+        )}
+        {import.meta.env.DEV && (
+          <TanStackRouterDevtools position="bottom-right" />
+        )}
       </ThemeProvider>
     </>
   );

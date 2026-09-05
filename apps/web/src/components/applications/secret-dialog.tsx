@@ -29,7 +29,11 @@ export function SecretDialog({ secret, onClose }: SecretDialogProps) {
         <div className="space-y-2">
           <Label>Secret</Label>
           <div className="flex gap-2">
-            <Input className="font-mono" readOnly value={secret || ""} />
+            <Input
+              className="font-mono text-xs"
+              readOnly
+              value={secret || ""}
+            />
             <CopyButton text={secret || ""} />
           </div>
         </div>

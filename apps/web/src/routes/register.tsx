@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export const Route = createFileRoute("/register")({
   component: RouteComponent,
 });
@@ -67,35 +69,31 @@ function RouteComponent() {
     >
       <div className="flex min-h-screen items-center justify-center p-4">
         <div className="w-full max-w-md">
-          <div className="mb-8 flex flex-col items-center gap-8">
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-primary/10 p-3 ring-1 ring-primary/20">
-                <ShieldCheck
-                  className="size-8 text-primary"
-                  strokeWidth={2.5}
-                />
-              </div>
+          <div className="mb-6 flex flex-col items-center gap-4">
+            <div className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground shadow-md">
+              <ShieldCheck className="size-5" strokeWidth={2.5} />
             </div>
-            <div className="space-y-2 text-center">
-              <h1 className="font-bold text-4xl text-foreground tracking-tight">
+            <div className="space-y-1 text-center">
+              <h1 className="font-semibold text-2xl text-foreground tracking-tight">
                 au1h
               </h1>
-              <p className="text-muted-foreground text-sm">
-                Centralized Authentication Platform
+              <p className="text-[13px] text-muted-foreground">
+                Auth for all of your apps, in one place.
               </p>
             </div>
           </div>
 
-          <Card className="border-border shadow-lg">
-            <CardHeader className="space-y-2 pb-4 text-center">
-              <CardTitle className="text-2xl">Create an account</CardTitle>
+          <Card className="border-border/80 bg-card/90 shadow-xl backdrop-blur">
+            <CardHeader className="text-center">
+              <CardTitle className="text-base">Create an account</CardTitle>
               <CardDescription className="text-muted-foreground">
-                Enter your details to get started
+                Admin accounts are by invitation or allowlist. If yours is
+                rejected, ask an existing administrator.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4 pt-2">
+            <CardContent className="space-y-4">
               {error && (
-                <div className="rounded-md bg-destructive/10 p-3 text-destructive text-sm">
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
                   {error}
                 </div>
               )}
@@ -118,7 +116,7 @@ function RouteComponent() {
                   }}
                 >
                   {(field) => (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <Label htmlFor="name">Full Name</Label>
                       <Input
                         disabled={isLoading}
@@ -130,7 +128,7 @@ function RouteComponent() {
                         value={field.state.value}
                       />
                       {field.state.meta.errors.length > 0 && (
-                        <p className="text-destructive text-sm">
+                        <p className="text-destructive text-xs">
                           {field.state.meta.errors[0]}
                         </p>
                       )}
@@ -142,13 +140,13 @@ function RouteComponent() {
                   name="email"
                   validators={{
                     onChange: ({ value }) =>
-                      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+                      EMAIL_REGEX.test(value)
                         ? undefined
                         : "Invalid email address",
                   }}
                 >
                   {(field) => (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <Label htmlFor="email">Email</Label>
                       <Input
                         disabled={isLoading}
@@ -160,7 +158,7 @@ function RouteComponent() {
                         value={field.state.value}
                       />
                       {field.state.meta.errors.length > 0 && (
-                        <p className="text-destructive text-sm">
+                        <p className="text-destructive text-xs">
                           {field.state.meta.errors[0]}
                         </p>
                       )}
@@ -178,7 +176,7 @@ function RouteComponent() {
                   }}
                 >
                   {(field) => (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <Label htmlFor="password">Password</Label>
                       <Input
                         disabled={isLoading}
@@ -190,7 +188,7 @@ function RouteComponent() {
                         value={field.state.value}
                       />
                       {field.state.meta.errors.length > 0 && (
-                        <p className="text-destructive text-sm">
+                        <p className="text-destructive text-xs">
                           {field.state.meta.errors[0]}
                         </p>
                       )}
@@ -199,7 +197,7 @@ function RouteComponent() {
                 </form.Field>
 
                 <Button
-                  className="h-12 w-full font-medium text-base"
+                  className="w-full"
                   disabled={isLoading}
                   size="lg"
                   type="submit"
@@ -215,7 +213,7 @@ function RouteComponent() {
                 </Button>
               </form>
 
-              <div className="text-center text-muted-foreground text-sm">
+              <div className="text-center text-[13px] text-muted-foreground">
                 Already have an account?{" "}
                 <Link
                   className="font-medium text-primary hover:underline"
