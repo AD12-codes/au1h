@@ -11,7 +11,8 @@
     },
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
-    "strictNullChecks": true,
+    "strict": true,
+    "skipLibCheck": true,
     "esModuleInterop": true
   }
 }

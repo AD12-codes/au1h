@@ -8,6 +8,27 @@
       "when": 1766088464544,
       "tag": "0000_applications",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1766130037912,
+      "tag": "0001_application_routes",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1766238493272,
+      "tag": "0002_organization",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788628203026,
+      "tag": "0003_unique_nulls_not_distinct",
+      "breakpoints": true
     }
   ]
 }

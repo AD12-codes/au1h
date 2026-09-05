@@ -1,10 +1,16 @@
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { Activity, ArrowLeft, Plus, RefreshCw, Users } from "lucide-react";
 import { useState } from "react";
-import { ApplicationStats } from "@/components/applications/application-stats";
 import { IntegrationSection } from "@/components/applications/integration-section";
 import { SecretDialog } from "@/components/applications/secret-dialog";
 import { SettingsForm } from "@/components/applications/settings-form";
+import { RouteFormDialog } from "@/components/routes/route-form-dialog";
+import { RoutesTable } from "@/components/routes/routes-table";
+import { TableSkeleton } from "@/components/shared/loading";
+import { Mono } from "@/components/shared/mono";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { ActiveBadge } from "@/components/shared/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,13 +20,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useApplication,
   useRegenerateSecret,
   useUpdateApplication,
 } from "@/hooks/use-applications";
+import type { AppRoute } from "@/hooks/use-routes";
+import { useRoutes } from "@/hooks/use-routes";
 import type { UpdateApplicationInput } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
@@ -38,33 +45,34 @@ function getErrorMessage(error: unknown): string | null {
   if (!error) {
     return null;
   }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return "An error occurred";
+  return error instanceof Error ? error.message : "An error occurred";
+}
+
+function BackLink() {
+  return (
+    <Link
+      className="inline-flex items-center gap-1 hover:text-foreground"
+      to="/applications"
+    >
+      <ArrowLeft className="size-3.5" /> Applications
+    </Link>
+  );
 }
 
 function LoadingState() {
   return (
-    <div className="container mx-auto max-w-3xl py-8">
-      <Skeleton className="mb-6 h-10 w-48" />
-      <Skeleton className="mb-8 h-24 w-full" />
-      <Skeleton className="h-96 w-full" />
-    </div>
-  );
-}
-
-function NotFoundState() {
-  return (
-    <div className="container mx-auto max-w-3xl py-8">
-      <p className="text-muted-foreground">Application not found</p>
-    </div>
+    <>
+      <Skeleton className="mb-5 h-14 w-2/3" />
+      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+        <Skeleton className="h-96" />
+        <Skeleton className="h-64" />
+      </div>
+    </>
   );
 }
 
 function ApplicationDetailPage() {
   const { id } = Route.useParams();
-  const navigate = useNavigate();
   const { data: application, isLoading } = useApplication(id);
   const updateMutation = useUpdateApplication();
   const regenerateSecretMutation = useRegenerateSecret();
@@ -72,8 +80,11 @@ function ApplicationDetailPage() {
   const [formData, setFormData] = useState<UpdateApplicationInput | null>(null);
   const [success, setSuccess] = useState(false);
   const [newSecret, setNewSecret] = useState<string | null>(null);
+  const [routeDialogOpen, setRouteDialogOpen] = useState(false);
+  const [editingRoute, setEditingRoute] = useState<AppRoute | null>(null);
 
-  // Initialize form data when application loads
+  const { data: routes = [], isLoading: routesLoading } = useRoutes(id);
+
   if (application && !formData) {
     setFormData({
       name: application.name,
@@ -90,7 +101,7 @@ function ApplicationDetailPage() {
   }
 
   if (!(application && formData)) {
-    return <NotFoundState />;
+    return <PageHeader eyebrow={<BackLink />} title="Application not found" />;
   }
 
   const isSystemApp = application.metadata
@@ -118,88 +129,155 @@ function ApplicationDetailPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-3xl py-8">
-      <Button
-        className="mb-6"
-        onClick={() => navigate({ to: "/applications" })}
-        variant="ghost"
-      >
-        <ArrowLeft className="mr-2 size-4" />
-        Back to Applications
-      </Button>
-
-      <div className="mb-8 flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="font-bold text-3xl tracking-tight">
-              {application.name}
-            </h1>
-            {isSystemApp && <Badge variant="secondary">System App</Badge>}
-          </div>
-          <p className="text-muted-foreground">
-            Application ID: <code className="text-sm">{application.id}</code>
-          </p>
-        </div>
-        <Badge variant={application.isActive ? "default" : "secondary"}>
-          {application.isActive ? "Active" : "Inactive"}
-        </Badge>
-      </div>
-
-      <ApplicationStats
-        sessionCount={application.sessionCount || 0}
-        userCount={application.userCount || 0}
+    <>
+      <PageHeader
+        actions={
+          <Button
+            onClick={() => {
+              setEditingRoute(null);
+              setRouteDialogOpen(true);
+            }}
+            size="sm"
+            variant="outline"
+          >
+            <Plus /> Add route
+          </Button>
+        }
+        description={
+          <span className="flex items-center gap-2">
+            <Mono>{application.slug}</Mono>
+            <span className="text-muted-foreground/60">·</span>
+            <span>
+              created {new Date(application.createdAt).toLocaleDateString()}
+            </span>
+          </span>
+        }
+        eyebrow={<BackLink />}
+        title={
+          <>
+            {application.name}
+            <ActiveBadge active={application.isActive} />
+            {isSystemApp && <Badge variant="info">System</Badge>}
+          </>
+        }
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Application Settings</CardTitle>
-          <CardDescription>
-            Update your application configuration
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SettingsForm
-            error={getErrorMessage(updateMutation.error)}
-            formData={formData}
-            isLoading={updateMutation.isPending}
-            isSystemApp={isSystemApp}
-            onChange={setFormData}
-            onSubmit={handleSubmit}
-            success={success}
-          />
+      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle>Settings</CardTitle>
+              <CardDescription>
+                Name, slug, allowed origins and redirect URIs.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SettingsForm
+                error={getErrorMessage(updateMutation.error)}
+                formData={formData}
+                isLoading={updateMutation.isPending}
+                isSystemApp={isSystemApp}
+                onChange={setFormData}
+                onSubmit={handleSubmit}
+                success={success}
+              />
+            </CardContent>
+          </Card>
 
-          <Separator className="my-8" />
-
-          <div className="space-y-4">
-            <div>
-              <h3 className="font-semibold text-lg">Application Secret</h3>
-              <p className="text-muted-foreground text-sm">
-                The secret is used by your backend to authenticate with au1h.
-                Regenerating will invalidate the old secret.
-              </p>
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-medium text-sm">Proxy routes</h2>
+                <p className="text-muted-foreground text-xs">
+                  Requests to <Mono>/proxy/&lt;pattern&gt;</Mono> are
+                  authenticated by au1h and forwarded to your backend.
+                </p>
+              </div>
             </div>
-            <Button
-              disabled={regenerateSecretMutation.isPending}
-              onClick={handleRegenerateSecret}
-              variant="outline"
-            >
-              <RefreshCw className="mr-2 size-4" />
-              {regenerateSecretMutation.isPending
-                ? "Regenerating..."
-                : "Regenerate Secret"}
-            </Button>
+            {routesLoading ? (
+              <TableSkeleton rows={2} />
+            ) : (
+              <RoutesTable
+                onAdd={() => {
+                  setEditingRoute(null);
+                  setRouteDialogOpen(true);
+                }}
+                onEdit={(route) => {
+                  setEditingRoute(route);
+                  setRouteDialogOpen(true);
+                }}
+                routes={routes}
+              />
+            )}
+          </section>
+        </div>
+
+        <aside className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard
+              icon={Users}
+              label="Users"
+              value={application.userCount ?? 0}
+            />
+            <StatCard
+              icon={Activity}
+              label="Sessions"
+              value={application.sessionCount ?? 0}
+            />
           </div>
 
-          <Separator className="my-8" />
+          <Card>
+            <CardHeader>
+              <CardTitle>Integration</CardTitle>
+              <CardDescription>
+                Values your client and backend need.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <IntegrationSection
+                applicationId={application.id}
+                slug={application.slug}
+              />
+            </CardContent>
+          </Card>
 
-          <IntegrationSection
-            applicationId={application.id}
-            slug={application.slug}
-          />
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Secret</CardTitle>
+              <CardDescription>
+                Authenticates your backend to the server-to-server API. Shown
+                once; regenerating invalidates the old one.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                className="w-full"
+                disabled={regenerateSecretMutation.isPending}
+                onClick={handleRegenerateSecret}
+                size="sm"
+                variant="outline"
+              >
+                <RefreshCw
+                  className={
+                    regenerateSecretMutation.isPending ? "animate-spin" : ""
+                  }
+                />
+                {regenerateSecretMutation.isPending
+                  ? "Regenerating…"
+                  : "Regenerate secret"}
+              </Button>
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
 
       <SecretDialog onClose={() => setNewSecret(null)} secret={newSecret} />
-    </div>
+      <RouteFormDialog
+        applicationId={id}
+        onOpenChange={setRouteDialogOpen}
+        open={routeDialogOpen}
+        route={editingRoute}
+      />
+    </>
   );
 }

@@ -1,9 +1,12 @@
-import { count, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, sessions, users } from "@/db/schema/auth";
+import { invalidateOriginsCache } from "@/middleware/dynamic-cors";
+import { generateSecret, hashSecret } from "./secret";
 
 export interface ApplicationWithStats {
   id: string;
+  organizationId: string;
   name: string;
   slug: string;
   allowedOrigins: string | null;
@@ -18,6 +21,7 @@ export interface ApplicationWithStats {
 }
 
 export interface CreateApplicationInput {
+  organizationId: string;
   name: string;
   slug: string;
   allowedOrigins?: string;
@@ -36,10 +40,17 @@ export interface UpdateApplicationInput {
   isActive?: boolean;
 }
 
-export async function listApplications(): Promise<ApplicationWithStats[]> {
+/**
+ * List applications scoped to an organization
+ * SECURITY: Always requires organizationId to prevent data leakage
+ */
+export async function listApplications(
+  organizationId: string
+): Promise<ApplicationWithStats[]> {
   const apps = await db
     .select({
       id: applications.id,
+      organizationId: applications.organizationId,
       name: applications.name,
       slug: applications.slug,
       allowedOrigins: applications.allowedOrigins,
@@ -51,6 +62,7 @@ export async function listApplications(): Promise<ApplicationWithStats[]> {
       updatedAt: applications.updatedAt,
     })
     .from(applications)
+    .where(eq(applications.organizationId, organizationId))
     .orderBy(applications.createdAt);
 
   const userCounts = await db
@@ -83,13 +95,23 @@ export async function listApplications(): Promise<ApplicationWithStats[]> {
   }));
 }
 
+/**
+ * Get application by ID, scoped to organization
+ * SECURITY: Validates organization ownership to prevent unauthorized access
+ */
 export async function getApplication(
-  id: string
+  id: string,
+  organizationId: string
 ): Promise<ApplicationWithStats | null> {
   const [appRecord] = await db
     .select()
     .from(applications)
-    .where(eq(applications.id, id))
+    .where(
+      and(
+        eq(applications.id, id),
+        eq(applications.organizationId, organizationId)
+      )
+    )
     .limit(1);
 
   if (!appRecord) {
@@ -132,17 +154,24 @@ export async function checkSlugExists(
   return excludeId ? existing.id !== excludeId : true;
 }
 
+/**
+ * Create application within an organization
+ * SECURITY: organizationId is required and validated upstream
+ */
 export async function createApplication(input: CreateApplicationInput) {
   const id = crypto.randomUUID();
-  const secret = crypto.randomUUID();
+  // The plaintext is returned to the caller exactly once; only the hash is stored.
+  const secret = generateSecret();
+  const secretHash = await hashSecret(secret);
 
   const [created] = await db
     .insert(applications)
     .values({
       id,
+      organizationId: input.organizationId,
       name: input.name,
       slug: input.slug,
-      secret,
+      secret: secretHash,
       allowedOrigins: input.allowedOrigins || null,
       redirectUris: input.redirectUris || null,
       logo: input.logo || null,
@@ -151,11 +180,19 @@ export async function createApplication(input: CreateApplicationInput) {
     })
     .returning();
 
+  // Invalidate CORS cache so new origins take effect
+  invalidateOriginsCache();
+
   return { application: created, secret };
 }
 
+/**
+ * Update application, scoped to organization
+ * SECURITY: Validates organization ownership before update
+ */
 export async function updateApplication(
   id: string,
+  organizationId: string,
   input: UpdateApplicationInput
 ) {
   const [updated] = await db
@@ -164,32 +201,83 @@ export async function updateApplication(
       ...input,
       updatedAt: new Date(),
     })
-    .where(eq(applications.id, id))
+    .where(
+      and(
+        eq(applications.id, id),
+        eq(applications.organizationId, organizationId)
+      )
+    )
     .returning();
+
+  // Invalidate CORS cache if origins or active status changed
+  if (input.allowedOrigins !== undefined || input.isActive !== undefined) {
+    invalidateOriginsCache();
+  }
 
   return updated;
 }
 
-export async function deleteApplication(id: string) {
+/**
+ * Delete application, scoped to organization
+ * SECURITY: Validates organization ownership before deletion
+ */
+export async function deleteApplication(id: string, organizationId: string) {
   const [deleted] = await db
     .delete(applications)
-    .where(eq(applications.id, id))
+    .where(
+      and(
+        eq(applications.id, id),
+        eq(applications.organizationId, organizationId)
+      )
+    )
     .returning({ id: applications.id });
+
+  // Invalidate CORS cache
+  invalidateOriginsCache();
 
   return deleted;
 }
 
-export async function regenerateSecret(id: string) {
-  const newSecret = crypto.randomUUID();
+/**
+ * Regenerate application secret, scoped to organization
+ * SECURITY: Validates organization ownership before regenerating
+ */
+export async function regenerateSecret(id: string, organizationId: string) {
+  const newSecret = generateSecret();
+  const secretHash = await hashSecret(newSecret);
 
   const [updated] = await db
     .update(applications)
     .set({
-      secret: newSecret,
+      secret: secretHash,
       updatedAt: new Date(),
     })
-    .where(eq(applications.id, id))
+    .where(
+      and(
+        eq(applications.id, id),
+        eq(applications.organizationId, organizationId)
+      )
+    )
     .returning({ id: applications.id });
 
   return updated ? { secret: newSecret } : null;
+}
+
+/**
+ * Look up an active application by slug together with its stored secret hash.
+ * Used only by the app-secret middleware; never return the hash to clients.
+ */
+export async function getApplicationCredentialsBySlug(slug: string) {
+  const [app] = await db
+    .select({
+      id: applications.id,
+      slug: applications.slug,
+      organizationId: applications.organizationId,
+      secretHash: applications.secret,
+      isActive: applications.isActive,
+    })
+    .from(applications)
+    .where(eq(applications.slug, slug))
+    .limit(1);
+  return app ?? null;
 }

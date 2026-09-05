@@ -1,6 +1,11 @@
 # au1h Development Plan
 
 > Centralized Multi-Application Authentication & API Proxy System
+>
+> **Historical document.** This plan tracked the original build-out (2025). The current
+> design, status and remaining work live in `docs/ARCHITECTURE.md`; treat that file as the
+> source of truth where the two disagree (e.g. Phase 1C's constraints were only made
+> correct by migration `0003`, and Phase 1F/RLS is still open).
 
 ---
 
@@ -81,39 +86,64 @@
 
 ## Phase 3: API Gateway
 
-### 2C: JWT Validation Middleware
+### Authentication Patterns (Both Supported)
 
-- [ ] Create JWKS fetcher with caching (from `/api/auth/.well-known/jwks.json`)
-- [ ] Implement JWT signature validation
-- [ ] Validate token expiration
-- [ ] Extract and validate `application_id` claim
-- [ ] Create Hono middleware for protected routes
+**Option 1: Client-to-Server (Direct JWT)**
 
-### 2D: Proxy Routing
+```
+App UI → App Backend (validates JWT via JWKS from au1h)
+```
 
-- [ ] Define route configuration structure (path → backend URL mapping)
-- [ ] Implement proxy handler using `fetch` or `http-proxy`
-- [ ] Add route: `/api/todos/*` → Python Todo service
-- [ ] Add route: `/api/blog/*` → Go Blog service
-- [ ] Handle proxy errors gracefully
-- [ ] Add request/response logging
+- Client gets JWT via Better Auth client
+- Backend validates using `/api/auth/jwks`
+- Best for: External apps, mobile apps, different platforms
 
-### 2E: Context Header Propagation
+**Option 2: Server-to-Server (Proxy via au1h)**
 
-- [ ] Inject `x-app-id` header with application ID
-- [ ] Inject `x-user-id` header with authenticated user ID
-- [ ] Inject `x-user-email` header with user email
-- [ ] Inject `x-user-roles` header with user roles (if applicable)
-- [ ] Strip sensitive headers from client requests
+```
+App UI → au1h Gateway → App Backend (trusts headers)
+```
+
+- JWT stays server-side (more secure)
+- au1h injects trusted headers: `x-user-id`, `x-app-id`, etc.
+- Best for: Internal apps, same-domain SPAs
+
+### 3A: Application Routes Table ✅
+
+- [x] Create `application_routes` table schema
+- [x] Generate and run migration
+
+### 3B: Routes CRUD API ✅
+
+- [x] Create routes module (controller/service/route)
+- [x] List routes for an application
+- [x] Create new route
+- [x] Update route
+- [x] Delete route
+- [x] Toggle route active status
+
+### 3C: Proxy Middleware ✅
+
+- [x] Implement Hono proxy middleware
+- [x] Match incoming requests to configured routes
+- [x] Forward to backend with context headers
+- [x] Handle proxy errors gracefully
+- [x] Add request/response logging
+
+### 3D: Context Header Propagation ✅
+
+- [x] Inject `x-app-id` header with application ID
+- [x] Inject `x-user-id` header with authenticated user ID
+- [x] Inject `x-user-email` header with user email
+- [x] Strip sensitive headers from client requests
 - [ ] Document header contract for backend services
 
-### 2F: Application Registration API
+### 3E: Admin UI for Routes ✅
 
-- [ ] Create `/api/apps/register` endpoint for new apps
-- [ ] Create `/api/apps/:id/credentials` endpoint for secret rotation
-- [ ] Create `/api/apps/:id/validate` endpoint for apps to verify tokens
-- [ ] Implement rate limiting on registration endpoints
-- [ ] Add webhook configuration for auth events
+- [x] Add routes section to application detail page
+- [x] Create route form (add/edit)
+- [x] Display routes list with actions
+- [x] Toggle route active status
 
 ---
 
@@ -150,14 +180,14 @@ User → App Login Page → au1h Auth (with app_id) → JWT + Session
 
 | Phase                      | Status         | Completion |
 | -------------------------- | -------------- | ---------- |
-| Phase 1: Database & Schema | 🟡 In Progress | 80%        |
+| Phase 1: Database & Schema | 🟡 In Progress | 95%        |
 | Phase 2: Admin Portal UI   | ✅ Complete    | 100%       |
-| Phase 3: API Gateway       | 🔲 Not Started | 0%         |
+| Phase 3: API Gateway       | ✅ Complete    | 100%       |
 
 ### Next Steps
 
 1. Complete Phase 1F (RLS policies) - optional, can defer
-2. Start Phase 3 (API Gateway)
+2. Documentation created at `docs/INTEGRATION.md`
 
 ---
 

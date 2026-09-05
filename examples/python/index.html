@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>au1h · Python example</title>
+  <style>
+    :root {
+      --accent: #ffd43b;
+      --bg: #0f1115;
+      --panel: #171a21;
+      --border: #262b36;
+      --text: #e6e8ee;
+      --muted: #8b93a7;
+      --danger: #ff6b6b;
+      --ok: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    header {
+      border-bottom: 1px solid var(--border); padding: 18px 28px;
+      display: flex; align-items: center; gap: 14px;
+    }
+    header .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); }
+    header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+    header .tag { color: var(--muted); font-size: 13px; }
+    main { max-width: 860px; margin: 32px auto; padding: 0 20px; display: grid; gap: 20px; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px 22px; }
+    .panel h2 { margin: 0 0 12px; font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .kv { display: grid; grid-template-columns: 160px 1fr; gap: 6px 14px; font-size: 14px; }
+    .kv dt { color: var(--muted); }
+    .kv dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+    form { display: grid; gap: 10px; }
+    label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+    input {
+      background: #0c0e12; border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 9px 11px; font-size: 14px;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+    button {
+      border: 1px solid var(--border); background: #1f2430; color: var(--text);
+      border-radius: 8px; padding: 9px 14px; font-size: 14px; cursor: pointer;
+    }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d11; font-weight: 600; }
+    button:disabled { opacity: .5; cursor: default; }
+    .msg { font-size: 14px; margin-top: 6px; min-height: 20px; }
+    .msg.error { color: var(--danger); }
+    .msg.ok { color: var(--ok); }
+    .big { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+    pre {
+      background: #0c0e12; border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; font-size: 12.5px; overflow: auto; margin: 0;
+    }
+    .hint { color: var(--muted); font-size: 13px; margin: 0; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="dot"></span>
+    <h1>au1h · Python example</h1>
+    <span class="tag">FastAPI + PyJWT</span>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Configuration</h2>
+      <dl class="kv">
+        <dt>au1h server</dt><dd id="cfg-au1h">…</dd>
+        <dt>x-app-id (slug)</dt><dd id="cfg-slug">…</dd>
+        <dt>Backend</dt><dd id="cfg-backend">…</dd>
+      </dl>
+    </section>
+
+    <section class="panel" id="auth-panel">
+      <h2>Sign in to this app</h2>
+      <form id="auth-form">
+        <label>Email <input id="email" type="email" autocomplete="email" required /></label>
+        <label>Password <input id="password" type="password" autocomplete="current-password" required minlength="8" /></label>
+        <label>Name (sign up only) <input id="name" type="text" autocomplete="name" /></label>
+        <div class="row">
+          <button type="submit" class="primary" id="btn-signin">Sign in</button>
+          <button type="button" id="btn-signup">Sign up</button>
+        </div>
+        <div class="msg" id="auth-msg"></div>
+      </form>
+      <p class="hint">
+        Requests go straight to au1h with the <code>x-app-id</code> header, so this email is a
+        separate user here than in the other example apps.
+      </p>
+    </section>
+
+    <section class="panel" id="me-panel" hidden>
+      <h2>User info · verified by the Python backend</h2>
+      <p class="big" id="me-email"></p>
+      <dl class="kv">
+        <dt>User id</dt><dd id="me-id"></dd>
+        <dt>Name</dt><dd id="me-name"></dd>
+        <dt>Application id</dt><dd id="me-app"></dd>
+        <dt>Token issued</dt><dd id="me-iat"></dd>
+        <dt>Token expires</dt><dd id="me-exp"></dd>
+        <dt>Verified with</dt><dd id="me-lib"></dd>
+      </dl>
+      <div class="row">
+        <button type="button" id="btn-refresh">Refresh from backend</button>
+        <button type="button" id="btn-signout">Sign out</button>
+      </div>
+      <div class="msg" id="me-msg"></div>
+    </section>
+
+    <section class="panel" id="raw-panel" hidden>
+      <h2>Raw backend response</h2>
+      <pre id="raw"></pre>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = { config: null, token: null };
+
+    const tokenKey = () => `au1h:${state.config.appSlug}:jwt`;
+
+    function setMsg(el, text, kind) {
+      el.textContent = text || "";
+      el.className = `msg ${kind || ""}`;
+    }
+
+    // Every call to au1h carries the app slug and the session cookie.
+    async function au1h(path, opts = {}) {
+      const res = await fetch(`${state.config.au1hUrl}/api/auth${path}`, {
+        ...opts,
+        credentials: "include",
+        headers: {
+          "content-type": "application/json",
+          "x-app-id": state.config.appSlug,
+          ...(opts.headers || {}),
+        },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.message || body.error || `${res.status} ${res.statusText}`);
+      }
+      return body;
+    }
+
+    async function fetchToken() {
+      const { token } = await au1h("/token");
+      state.token = token;
+      localStorage.setItem(tokenKey(), token);
+    }
+
+    async function loadMe() {
+      const res = await fetch("/api/me", {
+        headers: { authorization: `Bearer ${state.token}` },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        signOutLocal();
+        setMsg($("auth-msg"), body.error || `Backend rejected token (${res.status}). Sign in again.`, "error");
+        return;
+      }
+      renderMe(body);
+    }
+
+    function renderMe(body) {
+      const { user, token } = body;
+      $("me-email").textContent = user.email;
+      $("me-id").textContent = user.id;
+      $("me-name").textContent = user.name || "—";
+      $("me-app").textContent = user.applicationId || "—";
+      $("me-iat").textContent = new Date(token.issuedAt * 1000).toLocaleString();
+      $("me-exp").textContent = new Date(token.expiresAt * 1000).toLocaleString();
+      $("me-lib").textContent = `${body.language} · ${body.library}`;
+      $("raw").textContent = JSON.stringify(body, null, 2);
+      $("auth-panel").hidden = true;
+      $("me-panel").hidden = false;
+      $("raw-panel").hidden = false;
+      setMsg($("me-msg"), "");
+    }
+
+    function signOutLocal() {
+      state.token = null;
+      localStorage.removeItem(tokenKey());
+      $("auth-panel").hidden = false;
+      $("me-panel").hidden = true;
+      $("raw-panel").hidden = true;
+    }
+
+    async function withBusy(fn) {
+      const buttons = document.querySelectorAll("button");
+      buttons.forEach((b) => (b.disabled = true));
+      try { await fn(); } finally { buttons.forEach((b) => (b.disabled = false)); }
+    }
+
+    $("auth-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      withBusy(async () => {
+        setMsg($("auth-msg"), "Signing in…");
+        try {
+          await au1h("/sign-in/email", {
+            method: "POST",
+            body: JSON.stringify({ email: $("email").value, password: $("password").value }),
+          });
+          await fetchToken();
+          await loadMe();
+        } catch (err) {
+          setMsg($("auth-msg"), err.message, "error");
+        }
+      });
+    });
+
+    $("btn-signup").addEventListener("click", () => {
+      withBusy(async () => {
+        setMsg($("auth-msg"), "Creating account…");
+        try {
+          await au1h("/sign-up/email", {
+            method: "POST",
+            body: JSON.stringify({
+              email: $("email").value,
+              password: $("password").value,
+              name: $("name").value || $("email").value.split("@")[0],
+            }),
+          });
+          await fetchToken();
+          await loadMe();
+        } catch (err) {
+          setMsg($("auth-msg"), err.message, "error");
+        }
+      });
+    });
+
+    $("btn-refresh").addEventListener("click", () => withBusy(loadMe));
+
+    $("btn-signout").addEventListener("click", () => {
+      withBusy(async () => {
+        try { await au1h("/sign-out", { method: "POST" }); } catch (_) { /* cookie may belong to another app */ }
+        signOutLocal();
+        setMsg($("auth-msg"), "Signed out.", "ok");
+      });
+    });
+
+    (async () => {
+      state.config = await (await fetch("/api/config")).json();
+      $("cfg-au1h").textContent = state.config.au1hUrl;
+      $("cfg-slug").textContent = state.config.appSlug;
+      $("cfg-backend").textContent = `${location.origin} (${state.config.language})`;
+      state.token = localStorage.getItem(tokenKey());
+      if (state.token) {
+        await loadMe();
+      }
+    })();
+  </script>
+</body>
+</html>

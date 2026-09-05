@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { z } from "zod";
+import type { AdminEnv } from "@/middleware/require-org-session";
 import { logger } from "@/utils/logger";
 import {
   banUser,
@@ -23,7 +24,7 @@ const banSchema = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 
-export async function list(c: Context) {
+export async function list(c: Context<AdminEnv>) {
   try {
     const query = c.req.query();
     const parsed = listQuerySchema.safeParse(query);
@@ -35,7 +36,7 @@ export async function list(c: Context) {
       );
     }
 
-    const result = await listUsers(parsed.data);
+    const result = await listUsers(c.get("organizationId"), parsed.data);
     return c.json(result);
   } catch (error) {
     logger.error({ error }, "Failed to list users");
@@ -43,10 +44,10 @@ export async function list(c: Context) {
   }
 }
 
-export async function get(c: Context) {
+export async function get(c: Context<AdminEnv>) {
   try {
     const id = c.req.param("id");
-    const user = await getUser(id);
+    const user = await getUser(c.get("organizationId"), id);
 
     if (!user) {
       return c.json({ error: "User not found" }, 404);
@@ -59,10 +60,13 @@ export async function get(c: Context) {
   }
 }
 
-export async function getSessions(c: Context) {
+export async function getSessions(c: Context<AdminEnv>) {
   try {
     const id = c.req.param("id");
-    const userSessions = await getUserSessions(id);
+    const userSessions = await getUserSessions(c.get("organizationId"), id);
+    if (!userSessions) {
+      return c.json({ error: "User not found" }, 404);
+    }
     return c.json({ sessions: userSessions });
   } catch (error) {
     logger.error({ error }, "Failed to get user sessions");
@@ -70,7 +74,7 @@ export async function getSessions(c: Context) {
   }
 }
 
-export async function ban(c: Context) {
+export async function ban(c: Context<AdminEnv>) {
   try {
     const id = c.req.param("id");
     const body = await c.req.json().catch(() => ({}));
@@ -87,7 +91,12 @@ export async function ban(c: Context) {
       ? new Date(parsed.data.expiresAt)
       : undefined;
 
-    const user = await banUser(id, parsed.data.reason, expiresAt);
+    const user = await banUser(
+      c.get("organizationId"),
+      id,
+      parsed.data.reason,
+      expiresAt
+    );
 
     if (!user) {
       return c.json({ error: "User not found" }, 404);
@@ -102,10 +111,10 @@ export async function ban(c: Context) {
   }
 }
 
-export async function unban(c: Context) {
+export async function unban(c: Context<AdminEnv>) {
   try {
     const id = c.req.param("id");
-    const user = await unbanUser(id);
+    const user = await unbanUser(c.get("organizationId"), id);
 
     if (!user) {
       return c.json({ error: "User not found" }, 404);
@@ -120,10 +129,10 @@ export async function unban(c: Context) {
   }
 }
 
-export async function revokeUserSession(c: Context) {
+export async function revokeUserSession(c: Context<AdminEnv>) {
   try {
     const sessionId = c.req.param("sessionId");
-    const success = await revokeSession(sessionId);
+    const success = await revokeSession(c.get("organizationId"), sessionId);
 
     if (!success) {
       return c.json({ error: "Session not found" }, 404);
@@ -138,10 +147,13 @@ export async function revokeUserSession(c: Context) {
   }
 }
 
-export async function revokeAllSessions(c: Context) {
+export async function revokeAllSessions(c: Context<AdminEnv>) {
   try {
     const id = c.req.param("id");
-    const count = await revokeAllUserSessions(id);
+    const count = await revokeAllUserSessions(c.get("organizationId"), id);
+    if (count === null) {
+      return c.json({ error: "User not found" }, 404);
+    }
 
     logger.info({ userId: id, count }, "All user sessions revoked");
 

@@ -9,11 +9,12 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { db } from "@/db";
-import { applications, sessions, users } from "@/db/schema/auth";
+import { applications, members, sessions, users } from "@/db/schema/auth";
+import { redisService } from "@/utils/redis";
 
 export interface User {
   id: string;
-  applicationId: string;
+  applicationId: string | null;
   name: string;
   email: string;
   emailVerified: boolean;
@@ -27,15 +28,15 @@ export interface User {
 }
 
 export interface UserWithDetails extends User {
-  applicationName: string;
-  applicationSlug: string;
+  applicationName: string | null;
+  applicationSlug: string | null;
   sessionCount: number;
 }
 
 export interface Session {
   id: string;
   userId: string;
-  applicationId: string;
+  applicationId: string | null;
   expiresAt: Date;
   createdAt: Date;
   ipAddress: string | null;
@@ -57,14 +58,52 @@ export interface ListUsersResult {
   totalPages: number;
 }
 
+/**
+ * Users visible to an organization:
+ * - end users of any application owned by the organization, and
+ * - the organization's own members (admin-portal users, `application_id IS NULL`).
+ */
+function visibleToOrganization(organizationId: string): SQL {
+  const orgApplications = db
+    .select({ id: applications.id })
+    .from(applications)
+    .where(eq(applications.organizationId, organizationId));
+  const orgMembers = db
+    .select({ userId: members.userId })
+    .from(members)
+    .where(eq(members.organizationId, organizationId));
+
+  return or(
+    inArray(users.applicationId, orgApplications),
+    inArray(users.id, orgMembers)
+  ) as SQL;
+}
+
+const userColumns = {
+  id: users.id,
+  applicationId: users.applicationId,
+  name: users.name,
+  email: users.email,
+  emailVerified: users.emailVerified,
+  image: users.image,
+  role: users.role,
+  banned: users.banned,
+  banReason: users.banReason,
+  banExpires: users.banExpires,
+  createdAt: users.createdAt,
+  updatedAt: users.updatedAt,
+  applicationName: applications.name,
+  applicationSlug: applications.slug,
+};
+
 export async function listUsers(
+  organizationId: string,
   params: ListUsersParams
 ): Promise<ListUsersResult> {
   const { applicationId, search, page = 1, limit = 20 } = params;
   const offset = (page - 1) * limit;
 
-  // Build where conditions
-  const conditions: SQL<unknown>[] = [];
+  const conditions: SQL[] = [visibleToOrganization(organizationId)];
   if (applicationId) {
     conditions.push(eq(users.applicationId, applicationId));
   }
@@ -77,58 +116,34 @@ export async function listUsers(
       conditions.push(searchCondition);
     }
   }
+  const whereClause = and(...conditions);
 
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
-  // Get users with application info
   const userList = await db
-    .select({
-      id: users.id,
-      applicationId: users.applicationId,
-      name: users.name,
-      email: users.email,
-      emailVerified: users.emailVerified,
-      image: users.image,
-      role: users.role,
-      banned: users.banned,
-      banReason: users.banReason,
-      banExpires: users.banExpires,
-      createdAt: users.createdAt,
-      updatedAt: users.updatedAt,
-      applicationName: applications.name,
-      applicationSlug: applications.slug,
-    })
+    .select(userColumns)
     .from(users)
-    .innerJoin(applications, eq(users.applicationId, applications.id))
+    .leftJoin(applications, eq(users.applicationId, applications.id))
     .where(whereClause)
     .orderBy(desc(users.createdAt))
     .limit(limit)
     .offset(offset);
 
-  // Get session counts for each user
   const userIds = userList.map((u) => u.id);
   const sessionCounts =
     userIds.length > 0
       ? await db
-          .select({
-            userId: sessions.userId,
-            count: count(),
-          })
+          .select({ userId: sessions.userId, count: count() })
           .from(sessions)
           .where(inArray(sessions.userId, userIds))
           .groupBy(sessions.userId)
       : [];
-
   const sessionCountMap = new Map(
     sessionCounts.map((s) => [s.userId, s.count])
   );
 
-  // Get total count
   const [totalResult] = await db
     .select({ count: count() })
     .from(users)
     .where(whereClause);
-
   const total = totalResult?.count || 0;
 
   return {
@@ -143,27 +158,15 @@ export async function listUsers(
   };
 }
 
-export async function getUser(id: string): Promise<UserWithDetails | null> {
+export async function getUser(
+  organizationId: string,
+  id: string
+): Promise<UserWithDetails | null> {
   const [user] = await db
-    .select({
-      id: users.id,
-      applicationId: users.applicationId,
-      name: users.name,
-      email: users.email,
-      emailVerified: users.emailVerified,
-      image: users.image,
-      role: users.role,
-      banned: users.banned,
-      banReason: users.banReason,
-      banExpires: users.banExpires,
-      createdAt: users.createdAt,
-      updatedAt: users.updatedAt,
-      applicationName: applications.name,
-      applicationSlug: applications.slug,
-    })
+    .select(userColumns)
     .from(users)
-    .innerJoin(applications, eq(users.applicationId, applications.id))
-    .where(eq(users.id, id))
+    .leftJoin(applications, eq(users.applicationId, applications.id))
+    .where(and(eq(users.id, id), visibleToOrganization(organizationId)))
     .limit(1);
 
   if (!user) {
@@ -175,14 +178,18 @@ export async function getUser(id: string): Promise<UserWithDetails | null> {
     .from(sessions)
     .where(eq(sessions.userId, id));
 
-  return {
-    ...user,
-    sessionCount: sessionCount?.count || 0,
-  };
+  return { ...user, sessionCount: sessionCount?.count || 0 };
 }
 
-export function getUserSessions(userId: string): Promise<Session[]> {
-  return db
+export async function getUserSessions(
+  organizationId: string,
+  userId: string
+): Promise<Session[] | null> {
+  const user = await getUser(organizationId, userId);
+  if (!user) {
+    return null;
+  }
+  return await db
     .select({
       id: sessions.id,
       userId: sessions.userId,
@@ -198,10 +205,14 @@ export function getUserSessions(userId: string): Promise<Session[]> {
 }
 
 export async function banUser(
+  organizationId: string,
   id: string,
   reason?: string,
   expiresAt?: Date
 ): Promise<User | null> {
+  if (!(await getUser(organizationId, id))) {
+    return null;
+  }
   const [updated] = await db
     .update(users)
     .set({
@@ -213,10 +224,20 @@ export async function banUser(
     .where(eq(users.id, id))
     .returning();
 
+  if (updated) {
+    // A banned user must not keep using existing sessions.
+    await revokeAllUserSessions(organizationId, id);
+  }
   return updated || null;
 }
 
-export async function unbanUser(id: string): Promise<User | null> {
+export async function unbanUser(
+  organizationId: string,
+  id: string
+): Promise<User | null> {
+  if (!(await getUser(organizationId, id))) {
+    return null;
+  }
   const [updated] = await db
     .update(users)
     .set({
@@ -231,20 +252,53 @@ export async function unbanUser(id: string): Promise<User | null> {
   return updated || null;
 }
 
-export async function revokeSession(sessionId: string): Promise<boolean> {
-  const [deleted] = await db
-    .delete(sessions)
-    .where(eq(sessions.id, sessionId))
-    .returning({ id: sessions.id });
-
-  return !!deleted;
+/**
+ * Better Auth caches sessions in Redis under the raw token and keeps a per-user
+ * token list; deleting only the Postgres row would leave the session usable
+ * until its TTL. Clear both.
+ */
+async function purgeCachedSessions(userId: string, tokens: string[]) {
+  const redis = redisService.getClient();
+  const keys = [...tokens, `active-sessions-${userId}`];
+  if (keys.length > 0) {
+    await redis.del(...keys);
+  }
 }
 
-export async function revokeAllUserSessions(userId: string): Promise<number> {
+export async function revokeSession(
+  organizationId: string,
+  sessionId: string
+): Promise<boolean> {
+  const [session] = await db
+    .select({ id: sessions.id, userId: sessions.userId, token: sessions.token })
+    .from(sessions)
+    .where(eq(sessions.id, sessionId))
+    .limit(1);
+
+  if (!(session && (await getUser(organizationId, session.userId)))) {
+    return false;
+  }
+
+  await db.delete(sessions).where(eq(sessions.id, sessionId));
+  await purgeCachedSessions(session.userId, [session.token]);
+  return true;
+}
+
+export async function revokeAllUserSessions(
+  organizationId: string,
+  userId: string
+): Promise<number | null> {
+  if (!(await getUser(organizationId, userId))) {
+    return null;
+  }
   const deleted = await db
     .delete(sessions)
     .where(eq(sessions.userId, userId))
-    .returning({ id: sessions.id });
+    .returning({ token: sessions.token });
 
+  await purgeCachedSessions(
+    userId,
+    deleted.map((s) => s.token)
+  );
   return deleted.length;
 }

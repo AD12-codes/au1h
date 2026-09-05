@@ -1,47 +1,26 @@
-import { CopyButton } from "@/components/shared/copy-button";
-import { Label } from "@/components/ui/label";
+import { CopyField } from "@/components/shared/copy-field";
 
 interface IntegrationSectionProps {
   applicationId: string;
   slug: string;
 }
 
+const AU1H_URL = import.meta.env.VITE_SERVER_URL as string;
+
 export function IntegrationSection({
   applicationId,
   slug,
 }: IntegrationSectionProps) {
   return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="font-semibold text-lg">Integration</h3>
-        <p className="text-muted-foreground text-sm">
-          Use these values to integrate au1h with your application.
-        </p>
-      </div>
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <Label className="text-muted-foreground text-xs">
-            Application ID
-          </Label>
-          <div className="flex gap-2">
-            <code className="flex-1 rounded bg-muted px-3 py-2 text-sm">
-              {applicationId}
-            </code>
-            <CopyButton text={applicationId} />
-          </div>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-muted-foreground text-xs">
-            x-app-id Header Value
-          </Label>
-          <div className="flex gap-2">
-            <code className="flex-1 rounded bg-muted px-3 py-2 text-sm">
-              {slug}
-            </code>
-            <CopyButton text={slug} />
-          </div>
-        </div>
-      </div>
+    <div className="space-y-3">
+      <CopyField
+        hint="Send this as the x-app-id header; it is also the JWT aud."
+        label="Slug"
+        value={slug}
+      />
+      <CopyField label="Application id" value={applicationId} />
+      <CopyField label="Auth base URL" value={`${AU1H_URL}/api/auth`} />
+      <CopyField label="JWKS" value={`${AU1H_URL}/api/auth/jwks`} />
     </div>
   );
 }
