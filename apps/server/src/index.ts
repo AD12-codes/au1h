@@ -3,7 +3,7 @@ import "dotenv/config";
 import { Hono } from "hono";
 import { closeDatabase, initializeDatabase } from "@/db";
 import { logger } from "@/utils/logger";
-import { auth } from "./lib/auth";
+import { auth } from "./lib/auth/index";
 import { dynamicCorsMiddleware } from "./middleware/dynamic-cors";
 import { createProxyMiddleware } from "./proxy/middleware";
 import { routes } from "./routes";
@@ -23,9 +23,17 @@ app.use("/api/auth/*", (c, next) => {
 
   if (appId) {
     // Store app-id in cookie for OAuth callback to read
+    // Also set isClientApp=true to indicate this is a client app flow
+    // Use append: true for multiple Set-Cookie headers
     c.header(
       "Set-Cookie",
-      `au1h-app-id=${appId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`
+      `au1h-app-id=${appId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
+      { append: true }
+    );
+    c.header(
+      "Set-Cookie",
+      "au1h-is-client-app=true; Path=/; HttpOnly; SameSite=Lax; Max-Age=600",
+      { append: true }
     );
   }
 

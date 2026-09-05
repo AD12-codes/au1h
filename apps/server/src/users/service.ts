@@ -13,7 +13,7 @@ import { applications, sessions, users } from "@/db/schema/auth";
 
 export interface User {
   id: string;
-  applicationId: string;
+  applicationId: string | null;
   name: string;
   email: string;
   emailVerified: boolean;
@@ -27,15 +27,15 @@ export interface User {
 }
 
 export interface UserWithDetails extends User {
-  applicationName: string;
-  applicationSlug: string;
+  applicationName: string | null;
+  applicationSlug: string | null;
   sessionCount: number;
 }
 
 export interface Session {
   id: string;
   userId: string;
-  applicationId: string;
+  applicationId: string | null;
   expiresAt: Date;
   createdAt: Date;
   ipAddress: string | null;
@@ -99,7 +99,7 @@ export async function listUsers(
       applicationSlug: applications.slug,
     })
     .from(users)
-    .innerJoin(applications, eq(users.applicationId, applications.id))
+    .leftJoin(applications, eq(users.applicationId, applications.id))
     .where(whereClause)
     .orderBy(desc(users.createdAt))
     .limit(limit)
@@ -162,7 +162,7 @@ export async function getUser(id: string): Promise<UserWithDetails | null> {
       applicationSlug: applications.slug,
     })
     .from(users)
-    .innerJoin(applications, eq(users.applicationId, applications.id))
+    .leftJoin(applications, eq(users.applicationId, applications.id))
     .where(eq(users.id, id))
     .limit(1);
 
@@ -181,8 +181,8 @@ export async function getUser(id: string): Promise<UserWithDetails | null> {
   };
 }
 
-export function getUserSessions(userId: string): Promise<Session[]> {
-  return db
+export async function getUserSessions(userId: string): Promise<Session[]> {
+  return await db
     .select({
       id: sessions.id,
       userId: sessions.userId,
