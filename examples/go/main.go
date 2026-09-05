@@ -22,7 +22,6 @@ import (
 var (
 	au1hURL = strings.TrimRight(envOr("AU1H_URL", "http://localhost:4444"), "/")
 	appSlug = envOr("AU1H_APP_SLUG", "example-go")
-	appID   = os.Getenv("AU1H_APP_ID") // optional: pin tokens to this application
 	port    = envOr("PORT", "8081")
 
 	jwksURL   = au1hURL + "/api/auth/jwks"
@@ -42,7 +41,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// verifyAu1hToken validates signature, exp/nbf, issuer and audience.
+// verifyAu1hToken validates signature, exp/nbf, issuer and audience. The
+// audience is this application's slug, so a token minted for another au1h
+// application is rejected here.
 func verifyAu1hToken(ctx context.Context, raw string) (jwt.Token, error) {
 	keySet, err := jwksCache.Get(ctx, jwksURL)
 	if err != nil {
@@ -56,7 +57,7 @@ func verifyAu1hToken(ctx context.Context, raw string) (jwt.Token, error) {
 		[]byte(raw),
 		jwt.WithKeySet(keySet),
 		jwt.WithIssuer(au1hURL),
-		jwt.WithAudience(au1hURL),
+		jwt.WithAudience(appSlug),
 		jwt.WithValidate(true),
 	)
 }
@@ -84,11 +85,6 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	applicationID := stringClaim(tok, "applicationId")
-	// Tenant check: a token from another au1h application must not be accepted here.
-	if appID != "" && applicationID != appID {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "token was issued for a different application"})
-		return
-	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"language": "go",

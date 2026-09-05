@@ -307,6 +307,11 @@ function DocsPage() {
 
 export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_AUTH_URL,
+  fetchOptions: {
+    credentials: "include",
+    // Every request to au1h must identify your application.
+    headers: { "x-app-id": process.env.NEXT_PUBLIC_APP_SLUG! },
+  },
 });
 
 export const { useSession, signIn, signOut } = authClient;`}
@@ -384,6 +389,7 @@ export async function fetchTodos() {
                   code={`import * as jose from "jose";
 
 const AU1H_URL = process.env.AU1H_URL;
+const APP_SLUG = process.env.AU1H_APP_SLUG; // same value as x-app-id
 const JWKS = jose.createRemoteJWKSet(
   new URL(\`\${AU1H_URL}/api/auth/jwks\`)
 );
@@ -396,11 +402,16 @@ export async function authMiddleware(req, res, next) {
   }
 
   try {
-    const { payload } = await jose.jwtVerify(token, JWKS);
+    // EdDSA signature via JWKS; aud = your slug rejects other apps' tokens.
+    const { payload } = await jose.jwtVerify(token, JWKS, {
+      algorithms: ["EdDSA"],
+      issuer: AU1H_URL,
+      audience: APP_SLUG,
+    });
     req.user = {
       id: payload.sub,
       email: payload.email,
-      appId: payload.app_id,
+      appId: payload.applicationId,
     };
     next();
   } catch (error) {

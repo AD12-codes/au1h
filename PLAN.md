@@ -1,6 +1,11 @@
 # au1h Development Plan
 
 > Centralized Multi-Application Authentication & API Proxy System
+>
+> **Historical document.** This plan tracked the original build-out (2025). The current
+> design, status and remaining work live in `docs/ARCHITECTURE.md`; treat that file as the
+> source of truth where the two disagree (e.g. Phase 1C's constraints were only made
+> correct by migration `0003`, and Phase 1F/RLS is still open).
 
 ---
 

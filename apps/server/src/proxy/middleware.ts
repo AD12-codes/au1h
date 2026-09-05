@@ -1,7 +1,12 @@
 import type { Context, Next } from "hono";
-import { auth } from "@/lib/auth";
+import { getSessionForRequest, mintProxyToken } from "@/lib/auth";
+import { verifyAu1hJwt } from "@/lib/auth/verify-jwt";
 import { logger } from "@/utils/logger";
-import { buildTargetUrl, findMatchingRoute } from "./service";
+import {
+  buildTargetUrl,
+  findMatchingRoute,
+  type MatchedRoute,
+} from "./service";
 
 /**
  * Headers that should not be forwarded to backend
@@ -32,30 +37,97 @@ const STRIP_RESPONSE_HEADERS = [
 ];
 
 interface ProxyContext {
-  userId?: string;
-  userEmail?: string;
+  userId: string;
+  userEmail: string;
   appId: string;
   appSlug: string;
+  /** Scheme the client used to reach au1h. */
+  proto: string;
+  /** Short-lived au1h-signed token proving the hop came through the gateway. */
+  proxyToken: string;
 }
 
+const PROXY_TIMEOUT_MS = Number.parseInt(
+  process.env.AU1H_PROXY_TIMEOUT_MS ?? "30000",
+  10
+);
+
+type AuthResult =
+  | { ok: true; userId: string; userEmail: string; via: "jwt" | "session" }
+  | { ok: false; status: 401 | 403; message: string };
+
 /**
- * Get user context from session
+ * Authenticate the caller and make sure they belong to the matched route's
+ * application.
+ *
+ * Accepted credentials, in order:
+ * 1. `Authorization: Bearer <jwt>` minted by this au1h (`/api/auth/token`):
+ *    signature, expiry, iss/aud are verified and the `applicationId` claim
+ *    must equal the route's application.
+ * 2. The Better Auth session cookie. The session is resolved in the tenant
+ *    named by `x-app-id`, so a session from another application does not
+ *    resolve at all; the application is asserted again against the route.
+ *
+ * Anything else is a 401. Nothing is forwarded to a backend unauthenticated.
  */
-async function getUserContext(
-  c: Context
-): Promise<{ userId?: string; userEmail?: string }> {
-  try {
-    const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    if (session?.user) {
+async function authenticate(
+  c: Context,
+  route: MatchedRoute
+): Promise<AuthResult> {
+  const authorization = c.req.header("authorization") ?? "";
+  if (authorization.startsWith("Bearer ")) {
+    try {
+      const claims = await verifyAu1hJwt(
+        authorization.slice("Bearer ".length),
+        route.applicationSlug
+      );
+      if ((claims.applicationId ?? null) !== route.applicationId) {
+        return {
+          ok: false,
+          status: 403,
+          message: "Token was issued for a different application",
+        };
+      }
       return {
-        userId: session.user.id,
-        userEmail: session.user.email,
+        ok: true,
+        userId: claims.sub,
+        userEmail: claims.email,
+        via: "jwt",
       };
+    } catch (error) {
+      logger.debug({ error }, "Proxy: bearer token rejected");
+      return { ok: false, status: 401, message: "Invalid or expired token" };
     }
-  } catch (error) {
-    logger.debug({ error }, "Failed to get session for proxy context");
   }
-  return {};
+
+  let session: Awaited<ReturnType<typeof getSessionForRequest>>;
+  try {
+    session = await getSessionForRequest(c.req.raw.headers);
+  } catch (error) {
+    logger.debug({ error }, "Proxy: session lookup failed");
+    return { ok: false, status: 401, message: "Authentication required" };
+  }
+  if (!session?.user) {
+    return { ok: false, status: 401, message: "Authentication required" };
+  }
+
+  const sessionAppId =
+    (session.session as { applicationId?: string | null }).applicationId ??
+    null;
+  if (sessionAppId !== route.applicationId) {
+    return {
+      ok: false,
+      status: 403,
+      message: "Session belongs to a different application",
+    };
+  }
+
+  return {
+    ok: true,
+    userId: session.user.id,
+    userEmail: session.user.email,
+    via: "session",
+  };
 }
 
 /**
@@ -78,19 +150,15 @@ function buildProxyHeaders(
   // Inject trusted context headers
   headers.set("x-app-id", context.appId);
   headers.set("x-app-slug", context.appSlug);
-
-  if (context.userId) {
-    headers.set("x-user-id", context.userId);
-  }
-  if (context.userEmail) {
-    headers.set("x-user-email", context.userEmail);
-  }
+  headers.set("x-user-id", context.userId);
+  headers.set("x-user-email", context.userEmail);
 
   // Set forwarding headers
   const url = new URL(targetUrl);
   headers.set("host", url.host);
   headers.set("x-forwarded-host", originalHeaders.get("host") || "");
-  headers.set("x-forwarded-proto", "https");
+  headers.set("x-forwarded-proto", context.proto);
+  headers.set("x-au1h-token", context.proxyToken);
 
   const clientIp =
     originalHeaders.get("x-forwarded-for") ||
@@ -147,7 +215,7 @@ export function createProxyMiddleware(basePath: string) {
 
     const { route, remainingPath } = match;
 
-    logger.info(
+    logger.debug(
       {
         appSlug,
         method,
@@ -158,10 +226,23 @@ export function createProxyMiddleware(basePath: string) {
       "Proxying request"
     );
 
-    try {
-      // Get user context from session
-      const userContext = await getUserContext(c);
+    // Authenticate before touching the backend.
+    const authResult = await authenticate(c, route);
+    if (!authResult.ok) {
+      logger.warn(
+        { appSlug, method, path: relativePath, reason: authResult.message },
+        "Proxy request rejected"
+      );
+      return c.json(
+        {
+          error: authResult.status === 401 ? "Unauthorized" : "Forbidden",
+          message: authResult.message,
+        },
+        authResult.status
+      );
+    }
 
+    try {
       // Build target URL
       const queryString = new URL(c.req.url).search.slice(1); // Remove leading ?
       const targetUrl = buildTargetUrl(
@@ -173,9 +254,18 @@ export function createProxyMiddleware(basePath: string) {
 
       // Build proxy headers
       const proxyContext: ProxyContext = {
-        ...userContext,
+        userId: authResult.userId,
+        userEmail: authResult.userEmail,
         appId: route.applicationId,
         appSlug: route.applicationSlug,
+        proto: new URL(c.req.url).protocol.replace(":", ""),
+        proxyToken: await mintProxyToken({
+          applicationId: route.applicationId,
+          applicationSlug: route.applicationSlug,
+          user: { id: authResult.userId, email: authResult.userEmail },
+          method,
+          path: relativePath,
+        }),
       };
       const headers = buildProxyHeaders(
         c.req.raw.headers,
@@ -183,19 +273,21 @@ export function createProxyMiddleware(basePath: string) {
         targetUrl
       );
 
-      // Get request body if present
-      let body: BodyInit | null = null;
-      if (method !== "GET" && method !== "HEAD") {
-        body = await c.req.raw.clone().arrayBuffer();
-      }
+      // Stream the request body through instead of buffering it in memory.
+      const body =
+        method === "GET" || method === "HEAD" ? null : c.req.raw.body;
 
-      // Make the proxy request
+      // Make the proxy request (bounded by a timeout so a hung backend cannot
+      // pin au1h's connections).
       const startTime = Date.now();
       const response = await fetch(targetUrl, {
         method,
         headers,
         body,
-      });
+        signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
+        // Required by the fetch spec when sending a streaming body.
+        ...(body ? { duplex: "half" as const } : {}),
+      } as RequestInit);
       const duration = Date.now() - startTime;
 
       logger.info(
@@ -231,6 +323,16 @@ export function createProxyMiddleware(basePath: string) {
         },
         "Proxy request failed"
       );
+
+      if (error instanceof Error && error.name === "TimeoutError") {
+        return c.json(
+          {
+            error: "Gateway Timeout",
+            message: "Backend did not respond in time",
+          },
+          504
+        );
+      }
 
       return c.json(
         {

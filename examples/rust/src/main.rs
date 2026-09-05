@@ -37,7 +37,6 @@ struct Au1hClaims {
 struct AppState {
     au1h_url: String,
     app_slug: String,
-    app_id: Option<String>, // optional: pin tokens to this application
     http: reqwest::Client,
     jwks: RwLock<Option<JwkSet>>,
 }
@@ -77,9 +76,11 @@ impl AppState {
         let kid = header.kid.ok_or("token has no kid header")?;
         let key = self.decoding_key(&kid).await?;
 
+        // `aud` is this application's slug: a token minted for another au1h
+        // application fails validation here.
         let mut validation = Validation::new(Algorithm::EdDSA);
         validation.set_issuer(&[&self.au1h_url]);
-        validation.set_audience(&[&self.au1h_url]);
+        validation.set_audience(&[&self.app_slug]);
 
         decode::<Au1hClaims>(token, &key, &validation)
             .map(|data| data.claims)
@@ -125,13 +126,6 @@ async fn me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> axum::res
         Err(e) => return error(StatusCode::UNAUTHORIZED, format!("invalid token: {e}")),
     };
 
-    // Tenant check: a token from another au1h application must not be accepted here.
-    if let Some(expected) = &state.app_id {
-        if claims.application_id.as_deref() != Some(expected.as_str()) {
-            return error(StatusCode::FORBIDDEN, "token was issued for a different application");
-        }
-    }
-
     Json(json!({
         "language": "rust",
         "library": "jsonwebtoken",
@@ -157,7 +151,6 @@ async fn main() {
     let state = Arc::new(AppState {
         au1h_url: env_or("AU1H_URL", "http://localhost:4444").trim_end_matches('/').to_string(),
         app_slug: env_or("AU1H_APP_SLUG", "example-rust"),
-        app_id: std::env::var("AU1H_APP_ID").ok().filter(|v| !v.is_empty()),
         http: reqwest::Client::new(),
         jwks: RwLock::new(None),
     });

@@ -1,11 +1,16 @@
 import { APIError } from "better-auth/api";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { members, users } from "@/db/schema/auth";
+import { members, organizations } from "@/db/schema/auth";
 import { logger } from "@/utils/logger";
+import { isAdminSignupAllowed } from "./admin";
+import { getTenantScope } from "./tenant-context";
 
 /**
- * Session creation hook - adds applicationId and activeOrganizationId
+ * Session creation hook: pick the user's first organization as the active one.
+ *
+ * `applicationId` is no longer set here — the tenant-scoped adapter stamps it
+ * on every `session` (and `account`) row from the request's tenant.
  */
 export const sessionCreateBefore = async (
   session: {
@@ -16,92 +21,97 @@ export const sessionCreateBefore = async (
   },
   _ctx: unknown
 ) => {
-  // Get user's applicationId (NULL for admin portal, set for client apps)
-  const userRecord = await db
-    .select({ applicationId: users.applicationId })
-    .from(users)
-    .where(eq(users.id, session.userId))
-    .limit(1);
-
-  if (!userRecord.length) {
-    logger.error(
-      { userId: session.userId },
-      "Session creation failed: User not found"
-    );
-    throw new APIError("INTERNAL_SERVER_ERROR", {
-      message: "User not found",
-    });
-  }
-
-  // Get user's first organization to auto-set as active
   const memberRecord = await db
     .select({ organizationId: members.organizationId })
     .from(members)
     .where(eq(members.userId, session.userId))
     .limit(1);
 
-  const activeOrgId = memberRecord[0]?.organizationId ?? null;
-  const appId = userRecord[0].applicationId ?? null;
+  const activeOrganizationId = memberRecord[0]?.organizationId ?? null;
 
-  logger.info(
-    {
-      userId: session.userId,
-      applicationId: appId,
-      activeOrganizationId: activeOrgId,
-    },
+  logger.debug(
+    { userId: session.userId, activeOrganizationId },
     "Creating session"
   );
 
   return {
     data: {
       ...session,
-      applicationId: appId,
-      activeOrganizationId: activeOrgId,
+      activeOrganizationId,
     },
   };
 };
 
 /**
- * Account creation hook - copies applicationId from user
+ * User creation hook (before): admin-portal sign-up is by allowlist,
+ * invitation, or first-run bootstrap only. Covers email/password and OAuth
+ * sign-ups alike, since both create the user through this path.
  */
-export const accountCreateBefore = async (
-  account: {
-    userId: string;
-    providerId: string;
-    accountId: string;
-    accessToken?: string | null;
-    refreshToken?: string | null;
-    accessTokenExpiresAt?: Date | null;
-    refreshTokenExpiresAt?: Date | null;
-    scope?: string | null;
-    idToken?: string | null;
-    password?: string | null;
-  },
+export const userCreateBefore = async (
+  user: { email: string } & Record<string, unknown>,
   _ctx: unknown
 ) => {
-  // Get user to copy their applicationId to the account
-  const userRecord = await db
-    .select({ applicationId: users.applicationId })
-    .from(users)
-    .where(eq(users.id, account.userId))
-    .limit(1);
-
-  if (!userRecord.length) {
-    logger.error(
-      { userId: account.userId },
-      "Account creation failed: User not found"
-    );
-    throw new APIError("INTERNAL_SERVER_ERROR", {
-      message: "User not found",
+  if (getTenantScope()?.applicationId !== null) {
+    return;
+  }
+  const decision = await isAdminSignupAllowed(user.email);
+  if (!decision.allowed) {
+    logger.warn({ email: user.email }, "Rejected admin-portal sign-up");
+    throw new APIError("FORBIDDEN", {
+      message:
+        "Admin portal sign-up is by invitation only. Ask an existing administrator to invite you.",
     });
   }
-
-  const appId = userRecord[0].applicationId ?? null;
-
-  return {
-    data: {
-      ...account,
-      applicationId: appId,
-    },
-  };
+  logger.info(
+    { email: user.email, reason: decision.reason },
+    "Admin-portal sign-up allowed"
+  );
 };
+
+/**
+ * User creation hook: admin-portal users (`application_id IS NULL`) get a
+ * personal workspace organization so they can start registering applications.
+ * Client-application users are not organization members.
+ */
+export const userCreateAfter = async (
+  user: { id: string; name: string } & Record<string, unknown>,
+  _ctx: unknown
+) => {
+  if (user.applicationId != null) {
+    return;
+  }
+  await createOrganizationForUser(user.id, user.name);
+};
+
+async function createOrganizationForUser(userId: string, userName: string) {
+  const firstName = userName.split(" ")[0] || "My";
+  const orgName = `${firstName}'s Workspace`;
+  const orgSlug = `${firstName.toLowerCase()}-workspace-${userId.slice(0, 8)}`;
+  const now = new Date();
+
+  try {
+    const orgId = crypto.randomUUID();
+
+    await db.insert(organizations).values({
+      id: orgId,
+      name: orgName,
+      slug: orgSlug,
+      createdAt: now,
+    });
+
+    await db.insert(members).values({
+      id: crypto.randomUUID(),
+      organizationId: orgId,
+      userId,
+      role: "owner",
+      createdAt: now,
+    });
+
+    logger.info(
+      { userId, organizationId: orgId, orgName },
+      "Auto-created organization for admin portal user"
+    );
+  } catch (error) {
+    logger.error({ userId, error }, "Failed to auto-create organization");
+  }
+}

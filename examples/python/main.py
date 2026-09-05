@@ -15,7 +15,6 @@ from jwt import PyJWKClient
 
 AU1H_URL = os.environ.get("AU1H_URL", "http://localhost:4444").rstrip("/")
 APP_SLUG = os.environ.get("AU1H_APP_SLUG", "example-python")
-APP_ID = os.environ.get("AU1H_APP_ID") or None  # optional: pin tokens to this application
 PORT = int(os.environ.get("PORT", "8083"))
 
 # PyJWKClient fetches and caches au1h's signing keys; unknown kids trigger a refetch.
@@ -38,14 +37,12 @@ def current_claims(request: Request) -> dict:
             signing_key.key,
             algorithms=["EdDSA"],
             issuer=AU1H_URL,
-            audience=AU1H_URL,
+            # `aud` is this application's slug: a token minted for another au1h
+            # application fails here.
+            audience=APP_SLUG,
         )
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=401, detail=f"invalid token: {exc}") from exc
-
-    # Tenant check: a token from another au1h application must not be accepted here.
-    if APP_ID and claims.get("applicationId") != APP_ID:
-        raise HTTPException(status_code=403, detail="token was issued for a different application")
 
     return claims
 

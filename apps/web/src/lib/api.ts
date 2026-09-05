@@ -37,7 +37,8 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      // Admin portal uses organization-based auth, no x-app-id needed
+      // /api/v1 resolves the admin session itself (requireOrgSession); the
+      // session cookie is all that is needed here.
       ...options?.headers,
     },
   });

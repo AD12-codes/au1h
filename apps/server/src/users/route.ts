@@ -1,5 +1,9 @@
 import { Hono } from "hono";
 import {
+  type AdminEnv,
+  requireOrgSession,
+} from "@/middleware/require-org-session";
+import {
   ban,
   get,
   getSessions,
@@ -9,7 +13,9 @@ import {
   unban,
 } from "./controller";
 
-export const usersRoute = new Hono();
+export const usersRoute = new Hono<AdminEnv>();
+
+usersRoute.use("*", requireOrgSession);
 
 usersRoute.get("/", list);
 usersRoute.get("/:id", get);

@@ -1,7 +1,13 @@
 import { Hono } from "hono";
+import {
+  type AdminEnv,
+  requireOrgSession,
+} from "@/middleware/require-org-session";
 import * as controller from "./controller";
 
-export const routesConfigRoute = new Hono();
+export const routesConfigRoute = new Hono<AdminEnv>();
+
+routesConfigRoute.use("*", requireOrgSession);
 
 routesConfigRoute.get("/", controller.list);
 routesConfigRoute.get("/:id", controller.get);

@@ -2,6 +2,7 @@ import { and, count, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, sessions, users } from "@/db/schema/auth";
 import { invalidateOriginsCache } from "@/middleware/dynamic-cors";
+import { generateSecret, hashSecret } from "./secret";
 
 export interface ApplicationWithStats {
   id: string;
@@ -159,7 +160,9 @@ export async function checkSlugExists(
  */
 export async function createApplication(input: CreateApplicationInput) {
   const id = crypto.randomUUID();
-  const secret = crypto.randomUUID();
+  // The plaintext is returned to the caller exactly once; only the hash is stored.
+  const secret = generateSecret();
+  const secretHash = await hashSecret(secret);
 
   const [created] = await db
     .insert(applications)
@@ -168,7 +171,7 @@ export async function createApplication(input: CreateApplicationInput) {
       organizationId: input.organizationId,
       name: input.name,
       slug: input.slug,
-      secret,
+      secret: secretHash,
       allowedOrigins: input.allowedOrigins || null,
       redirectUris: input.redirectUris || null,
       logo: input.logo || null,
@@ -240,12 +243,13 @@ export async function deleteApplication(id: string, organizationId: string) {
  * SECURITY: Validates organization ownership before regenerating
  */
 export async function regenerateSecret(id: string, organizationId: string) {
-  const newSecret = crypto.randomUUID();
+  const newSecret = generateSecret();
+  const secretHash = await hashSecret(newSecret);
 
   const [updated] = await db
     .update(applications)
     .set({
-      secret: newSecret,
+      secret: secretHash,
       updatedAt: new Date(),
     })
     .where(
@@ -257,4 +261,23 @@ export async function regenerateSecret(id: string, organizationId: string) {
     .returning({ id: applications.id });
 
   return updated ? { secret: newSecret } : null;
+}
+
+/**
+ * Look up an active application by slug together with its stored secret hash.
+ * Used only by the app-secret middleware; never return the hash to clients.
+ */
+export async function getApplicationCredentialsBySlug(slug: string) {
+  const [app] = await db
+    .select({
+      id: applications.id,
+      slug: applications.slug,
+      organizationId: applications.organizationId,
+      secretHash: applications.secret,
+      isActive: applications.isActive,
+    })
+    .from(applications)
+    .where(eq(applications.slug, slug))
+    .limit(1);
+  return app ?? null;
 }

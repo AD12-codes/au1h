@@ -44,10 +44,29 @@ au1h provides two authentication patterns:
                                 └─────────────┘
 ```
 
-1. User logs in via au1h
-2. Your frontend gets JWT token
-3. Frontend sends JWT to your backend
-4. Backend validates JWT using au1h's JWKS endpoint
+1. User logs in via au1h (every request carries `x-app-id: <your slug>`)
+2. Your frontend calls `GET /api/auth/token` and receives a JWT
+3. Frontend sends the JWT to your backend as `Authorization: Bearer <jwt>`
+4. Backend validates the JWT against au1h's JWKS endpoint
+
+#### The JWT
+
+| Property        | Value                                                          |
+| --------------- | -------------------------------------------------------------- |
+| Algorithm       | `EdDSA` (Ed25519). Not RS256.                                  |
+| JWKS            | `GET {AU1H_URL}/api/auth/jwks` — public, no `x-app-id` needed  |
+| `iss`           | au1h's base URL (`BETTER_AUTH_URL`)                            |
+| `aud`           | **Your application slug** (the same value as `x-app-id`)       |
+| Lifetime        | 15 minutes; call `/api/auth/token` again to get a fresh one    |
+| Claims          | `sub` (user id), `email`, `name`, `applicationId`              |
+
+**Always verify the signature, `iss`, and `aud` = your slug.** All applications share one
+JWKS, so the `aud` check is what stops a token minted for another application from being
+accepted at your backend. The tenant id is also available as the `applicationId` claim
+(there is no `app_id` claim).
+
+Working, runnable backends for Go, Rust, Python and TypeScript live in
+[`examples/`](../examples/README.md).
 
 ### Pattern 2: Proxy via au1h Gateway
 
@@ -60,9 +79,14 @@ au1h provides two authentication patterns:
 ```
 
 1. User logs in via au1h
-2. Frontend makes API calls to au1h proxy endpoint
-3. au1h validates session and proxies to your backend
-4. Your backend receives trusted headers (`x-user-id`, `x-app-id`, etc.)
+2. Frontend makes API calls to au1h proxy endpoint (`/proxy/...`, with `x-app-id`)
+3. au1h **requires** a credential and checks it belongs to your application: the session
+   cookie, or `Authorization: Bearer <au1h JWT>`. No credential → 401; a credential from
+   another application → 403. Only then is the request forwarded.
+4. Your backend receives trusted headers (`x-user-id`, `x-user-email`, `x-app-id`,
+   `x-app-slug`); they are always present on proxied requests. It also receives
+   `x-au1h-token`, a 60-second JWT signed by au1h with `aud` = your slug: verify it
+   against the JWKS if you want cryptographic proof the request came through au1h.
 
 ---
 
@@ -117,7 +141,11 @@ import { createAuthClient } from "better-auth/react";
 
 export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_AUTH_URL, // e.g., "https://auth.yoursite.com"
-  // Your application slug is passed via headers
+  fetchOptions: {
+    credentials: "include",
+    // Every request to au1h must identify your application.
+    headers: { "x-app-id": process.env.NEXT_PUBLIC_APP_SLUG! },
+  },
 });
 
 // Export hooks for convenience
@@ -290,10 +318,25 @@ import { authClient } from "@/lib/auth-client";
 
 const API_BASE = "https://your-backend.com";
 
+const AU1H_URL = process.env.NEXT_PUBLIC_AUTH_URL;
+const APP_SLUG = process.env.NEXT_PUBLIC_APP_SLUG;
+
+// The session token in the cookie is NOT a JWT. Ask au1h to mint one.
+// It is valid for 15 minutes; cache it and refresh on 401.
+export async function getJwt(): Promise<string> {
+  const response = await fetch(`${AU1H_URL}/api/auth/token`, {
+    headers: { "x-app-id": APP_SLUG },
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error("Not signed in");
+  }
+  const { token } = await response.json();
+  return token;
+}
+
 export async function fetchTodos() {
-  // Get JWT token from Better Auth
-  const { data } = await authClient.getSession();
-  const token = data?.session?.token;
+  const token = await getJwt();
 
   const response = await fetch(`${API_BASE}/api/todos`, {
     headers: {
@@ -324,7 +367,12 @@ When using the proxy pattern, au1h injects these trusted headers:
 | `x-app-id`     | Application UUID          |
 | `x-app-slug`   | Application slug          |
 
-**Important**: These headers are stripped from client requests and only injected by au1h. Your backend can trust them.
+**Important**: These headers are stripped from client requests and only injected by au1h,
+and au1h only forwards authenticated requests whose session or JWT belongs to the route's
+application. Your backend can trust them if it is only reachable from au1h (network
+policy / private network), **or** if it verifies the `x-au1h-token` header (an au1h-signed
+JWT, `aud` = your slug, valid 60 seconds) with the same JWKS code as the Direct JWT
+pattern.
 
 ---
 
@@ -343,15 +391,10 @@ npm install express jose
 import * as jose from "jose";
 
 const AU1H_URL = process.env.AU1H_URL || "http://localhost:4444";
-let jwks = null;
+const APP_SLUG = process.env.AU1H_APP_SLUG; // the same value you send as x-app-id
 
-// Cache JWKS
-async function getJWKS() {
-  if (!jwks) {
-    jwks = jose.createRemoteJWKSet(new URL(`${AU1H_URL}/api/auth/jwks`));
-  }
-  return jwks;
-}
+// createRemoteJWKSet caches the keys and refetches on unknown `kid`s.
+const JWKS = jose.createRemoteJWKSet(new URL(`${AU1H_URL}/api/auth/jwks`));
 
 export async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -363,13 +406,18 @@ export async function authMiddleware(req, res, next) {
   const token = authHeader.slice(7);
 
   try {
-    const JWKS = await getJWKS();
-    const { payload } = await jose.jwtVerify(token, JWKS);
+    // `audience` is your slug: tokens minted for other applications fail here.
+    const { payload } = await jose.jwtVerify(token, JWKS, {
+      algorithms: ["EdDSA"],
+      issuer: AU1H_URL,
+      audience: APP_SLUG,
+    });
 
     req.user = {
       id: payload.sub,
       email: payload.email,
-      appId: payload.app_id,
+      name: payload.name,
+      appId: payload.applicationId,
     };
 
     next();
@@ -457,8 +505,7 @@ app.listen(8080, () => {
 #### Dependencies
 
 ```bash
-go get github.com/golang-jwt/jwt/v5
-go get github.com/lestrrat-go/jwx/v2/jwk
+go get github.com/lestrrat-go/jwx/v2
 ```
 
 #### Middleware (Direct JWT)
@@ -470,6 +517,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -492,6 +540,7 @@ var (
 	jwksCache *jwk.Cache
 	jwksOnce  sync.Once
 	au1hURL   = "http://localhost:4444"
+	appSlug   = os.Getenv("AU1H_APP_SLUG") // the same value you send as x-app-id
 )
 
 func getJWKS() jwk.Set {
@@ -521,9 +570,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		keySet := getJWKS()
 
+		// Signature (EdDSA, from the JWKS), exp, iss and aud are all checked here.
+		// The audience is your slug: tokens minted for other applications fail.
 		token, err := jwt.Parse(
 			[]byte(tokenString),
 			jwt.WithKeySet(keySet),
+			jwt.WithIssuer(au1hURL),
+			jwt.WithAudience(appSlug),
+			jwt.WithValidate(true),
 		)
 		if err != nil {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
@@ -533,7 +587,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		user := UserContext{
 			ID:    token.Subject(),
 			Email: getStringClaim(token, "email"),
-			AppID: getStringClaim(token, "app_id"),
+			AppID: getStringClaim(token, "applicationId"),
 		}
 
 		ctx := context.WithValue(r.Context(), UserContextKey, user)
@@ -688,70 +742,65 @@ func createTodo(w http.ResponseWriter, r *http.Request) {
 #### Installation
 
 ```bash
-pip install fastapi uvicorn python-jose httpx
+pip install fastapi uvicorn "pyjwt[crypto]"
 ```
+
+`pyjwt[crypto]` is required: the tokens are EdDSA (Ed25519), which needs the
+`cryptography` backend.
 
 #### Middleware (Direct JWT)
 
 ```python
 # middleware/auth.py
-from fastapi import Request, HTTPException, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, jwk
-from jose.exceptions import JWTError
-import httpx
-from functools import lru_cache
+import os
 from dataclasses import dataclass
 
-AU1H_URL = "http://localhost:4444"
+import jwt
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import PyJWKClient
+
+AU1H_URL = os.environ.get("AU1H_URL", "http://localhost:4444")
+APP_SLUG = os.environ.get("AU1H_APP_SLUG")  # the same value you send as x-app-id
 
 security = HTTPBearer()
+
+# Fetches and caches au1h's signing keys; refetches on unknown kids.
+jwks_client = PyJWKClient(f"{AU1H_URL}/api/auth/jwks", cache_keys=True)
+
 
 @dataclass
 class User:
     id: str
     email: str
-    app_id: str
+    name: str | None
+    app_id: str | None
 
-@lru_cache(maxsize=1)
-def get_jwks():
-    """Fetch and cache JWKS from au1h"""
-    response = httpx.get(f"{AU1H_URL}/api/auth/jwks")
-    response.raise_for_status()
-    return response.json()
-
-def get_public_key(token: str):
-    """Get the public key for the given token"""
-    jwks = get_jwks()
-    unverified_header = jwt.get_unverified_header(token)
-
-    for key in jwks["keys"]:
-        if key["kid"] == unverified_header["kid"]:
-            return jwk.construct(key)
-
-    raise HTTPException(status_code=401, detail="Key not found")
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> User:
-    """Validate JWT and return user context"""
+    """Validate the au1h JWT and return the user context."""
     token = credentials.credentials
 
     try:
-        public_key = get_public_key(token)
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
         payload = jwt.decode(
             token,
-            public_key,
-            algorithms=["RS256"]
+            signing_key.key,
+            algorithms=["EdDSA"],
+            issuer=AU1H_URL,
+            audience=APP_SLUG,  # tokens minted for other applications fail here
         )
+    except jwt.PyJWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {exc}") from exc
 
-        return User(
-            id=payload.get("sub"),
-            email=payload.get("email"),
-            app_id=payload.get("app_id")
-        )
-    except JWTError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
+    return User(
+        id=payload["sub"],
+        email=payload["email"],
+        name=payload.get("name"),
+        app_id=payload.get("applicationId"),
+    )
 ```
 
 #### Middleware (Proxy Pattern - Trusted Headers)
@@ -877,8 +926,8 @@ if __name__ == "__main__":
 | `/api/auth/sign-up/email` | POST   | Create new account                |
 | `/api/auth/sign-out`      | POST   | Sign out (invalidate session)     |
 | `/api/auth/session`       | GET    | Get current session               |
-| `/api/auth/jwks`          | GET    | Get JWKS for token verification   |
-| `/api/auth/token`         | GET    | Get JWT token for current session |
+| `/api/auth/jwks`          | GET    | Public JWKS (EdDSA) for token verification; no `x-app-id` needed |
+| `/api/auth/token`         | GET    | Mint a 15-minute JWT for the current session (`{ "token": "..." }`) |
 
 ### Proxy Endpoint
 
@@ -890,7 +939,24 @@ if __name__ == "__main__":
 
 - `x-app-id`: Your application slug
 
+### Server-to-server API (application secret)
+
+Authenticate with `x-app-id: <slug>` and `x-app-secret: <secret>` (shown once when the
+application is created or its secret is regenerated in the admin portal; only a hash is
+stored). Applications created before secrets were hashed must regenerate theirs.
+
+| Endpoint               | Method | Description                                                                 |
+| ---------------------- | ------ | --------------------------------------------------------------------------- |
+| `/api/apps/me`         | GET    | Check credentials; returns your application id and slug                     |
+| `/api/apps/introspect` | POST   | `{ "token": "<au1h JWT or session token>" }` → `{ active, user, expiresAt }` |
+
+Use `introspect` when you want au1h to check a token for you (it also reflects session
+revocation and bans immediately), instead of verifying the JWT offline.
+
 ### Admin API (v1)
+
+Requires an au1h admin-portal session (`x-app-id: au1h-admin`) with an active
+organization; everything is scoped to that organization. Unauthenticated calls get `401`.
 
 | Endpoint                   | Method | Description             |
 | -------------------------- | ------ | ----------------------- |
@@ -901,11 +967,12 @@ if __name__ == "__main__":
 | `/api/v1/applications/:id` | DELETE | Delete application      |
 | `/api/v1/routes`           | GET    | List proxy routes       |
 | `/api/v1/routes/:id`       | GET    | Get route details       |
-| `/api/v1/routes`           | POST   | Create route            |
+| `/api/v1/routes`           | POST   | Create route (application must belong to your organization; `backendUrl` must be public `http(s)` in production) |
 | `/api/v1/routes/:id`       | PUT    | Update route            |
 | `/api/v1/routes/:id`       | DELETE | Delete route            |
 | `/api/v1/users`            | GET    | List users              |
 | `/api/v1/users/:id`        | GET    | Get user details        |
+| `/api/v1/users/:id/ban`    | POST   | Ban user and revoke their sessions |
 
 ---
 
@@ -920,9 +987,17 @@ if __name__ == "__main__":
 
 **2. Token validation fails**
 
-- Verify JWKS endpoint is accessible
-- Check that the token hasn't expired
-- Ensure you're using the correct application context
+- Verify the JWKS endpoint is accessible from your backend
+- Use `EdDSA`, not RS256; make sure your JWT library supports Ed25519 (OKP) keys
+- Verify `iss` against au1h's base URL exactly (scheme, host, port, no trailing slash) and
+  `aud` against your application slug
+- Check that the token hasn't expired (15-minute lifetime)
+- Read the tenant from the `applicationId` claim (there is no `app_id` claim)
+
+**2b. Sign-in returns 401 "Missing application context"**
+
+- Every `/api/auth/*` request needs `x-app-id: <your slug>`; the Better Auth client must
+  be configured with that header (see the frontend section)
 
 **3. Proxy returns 404**
 

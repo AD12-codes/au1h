@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { applicationRoutes, applications } from "@/db/schema/auth";
+import { invalidateCache, onCacheInvalidate } from "@/utils/cache-bus";
 import { logger } from "@/utils/logger";
 
 export interface MatchedRoute {
@@ -21,6 +22,10 @@ interface RouteCache {
 
 const CACHE_TTL_MS = 30_000; // 30 seconds cache
 let routeCache: RouteCache | null = null;
+
+onCacheInvalidate("routes", () => {
+  routeCache = null;
+});
 
 // Regex patterns (defined at module level for performance)
 const WILDCARD_SUFFIX_REGEX = /\*.*$/;
@@ -77,7 +82,7 @@ export async function getActiveRoutes(): Promise<MatchedRoute[]> {
  * Invalidate the route cache (call when routes are modified)
  */
 export function invalidateRouteCache(): void {
-  routeCache = null;
+  invalidateCache("routes");
   logger.debug("Proxy route cache invalidated");
 }
 

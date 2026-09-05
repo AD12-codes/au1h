@@ -2,6 +2,8 @@
 
 > Status doc. Describes what au1h is, how it works today, and what needs fixing.
 > Written against commit state of `apps/server` + `apps/web`, Better Auth `1.3.34`.
+> Updated 2026-09-05: §5.1–§5.10 are fixed and most of §5.11 is done; see §3 for the
+> current flow and the end of each §5 item for what is still open.
 
 ---
 
@@ -40,9 +42,11 @@ The core requirement is that **the same email is a different user in every app**
 Three independent identities: separate passwords, separate OAuth links, separate
 sessions, separate bans. Better Auth does not support this — it treats `user.email` as
 globally unique and its internal lookups (`findUserByEmail`, `findOAuthUser`,
-`linkAccount`, …) have no notion of a tenant. So au1h **overrides Better Auth's internal
-adapter methods per request** to inject an `applicationId` filter. That override layer is
-the heart of this codebase, and also its biggest liability (see §5.1).
+`linkAccount`, …) have no notion of a tenant. So au1h **wraps the database adapter**: the
+tenant for the current request lives in `AsyncLocalStorage`, and every query Better Auth
+makes against `user`, `session` or `account` gets an `application_id` predicate (and every
+insert gets the value) injected by `lib/auth/tenant-adapter.ts`. That wrapper is the heart
+of this codebase (see §3.1 and §5.1).
 
 ---
 
@@ -57,9 +61,12 @@ organization  (workspace, owns applications — Better Auth `organization` plugi
         └── application_routes  (proxy config: path_pattern → backend_url)
 ```
 
-`application_id IS NULL` is the sentinel for **au1h's own admin portal users**. Admin
-users are scoped by organization instead, and get an auto-created
-`"<FirstName>'s Workspace"` org on signup (<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/internal-adapters.ts" lines="423-458" />).
+`application_id IS NULL` is the sentinel for **au1h's own admin portal users**. The admin
+portal is an explicit tenant: it sends the reserved slug `x-app-id: au1h-admin`
+(`AU1H_ADMIN_APP_SLUG`), which no client application may register. Admin users are scoped
+by organization, get an auto-created `"<FirstName>'s Workspace"` org on signup, and may
+only sign up if allowlisted (`AU1H_ADMIN_EMAILS`), invited (pending `invitations` row), or
+the very first admin (<ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/admin.ts" />).
 
 Schema: <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/db/schema/auth.ts" />
 
@@ -71,31 +78,88 @@ Schema: <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/db/schem
 
 1. `dynamicCorsMiddleware` looks up allowed origins from the `applications` table
    (1-min in-process cache) and applies CORS. <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/middleware/dynamic-cors.ts" />
-2. A Hono middleware copies the `x-app-id` header into `au1h-app-id` +
-   `au1h-is-client-app` cookies, so OAuth callbacks (which arrive without the header)
-   can still recover app context. <ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/index.ts" lines="21-41" />
-3. Better Auth's `hooks.before` (`authBeforeHook`) runs:
-   - decides if this is an **admin-portal** request (`Origin`/`Referer` matches
-     `AU1H_ADMIN_ORIGINS`, or a Redis marker keyed by client IP for OAuth callbacks),
-   - resolves the app slug: `x-app-id` header → marker cookies → `au1h-app-id` cookie →
-     origin→slug map,
-   - resolves slug → `applications.id`, rejecting unknown/inactive apps with 401,
-   - **monkey-patches `ctx.context.internalAdapter`** with the seven tenant-aware
-     overrides. <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/hooks-middleware.ts" />
-4. Better Auth executes the endpoint, now transparently scoped to one application.
-5. `databaseHooks` stamp `applicationId` (and `activeOrganizationId`) onto new sessions
-   and accounts. <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/database-hooks.ts" />
+2. A Hono middleware copies the `x-app-id` header into an `au1h-app-id` cookie (appended
+   after the handler ran, so Better Auth's own Set-Cookie survives), so OAuth callbacks,
+   which arrive without the header, can still recover app context.
+   <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/index.ts" />
+3. `handleAuthRequest()` opens a fresh, empty **tenant store** (`AsyncLocalStorage`) for
+   the request and calls `auth.handler` inside it.
+   <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/tenant-context.ts" />
+4. Better Auth's `hooks.before` (`authBeforeHook`) runs:
+   - resolves the app slug: `x-app-id` header → `au1h-app-id` cookie → origin→slug map
+     (registered allowed origins only),
+   - `au1h-admin` → admin scope (`applicationId = null`); any other slug →
+     `applications.id`, rejecting unknown/inactive apps with 401; no slug → 401 except
+     for the public `/jwks` and `/ok` endpoints. `Origin`/`Referer` are never consulted
+     for the admin decision,
+   - records `{ applicationId }` in the tenant store via `setTenantScope()`. Nothing on
+     the shared Better Auth context is mutated.
+     <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/hooks-middleware.ts" />
+5. Better Auth executes the endpoint. Every adapter call it makes for `user`, `session` or
+   `account` goes through the **tenant-scoped adapter**, which reads the store and adds
+   `application_id = $tenant` to reads and writes, stamps it on creates, and throws if no
+   tenant has been resolved. Other models pass through untouched. Sessions served from the
+   Redis cache get the same check in `tenant-secondary-storage.ts`.
+   <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/tenant-adapter.ts" />
+6. `databaseHooks`: `user.create.before` rejects admin-portal sign-ups that are not
+   allowlisted/invited/bootstrap (email and OAuth alike); `user.create.after` creates the
+   workspace organization for new admin users; `session.create.before` sets
+   `activeOrganizationId`.
+   <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/database-hooks.ts" />
 
-Overridden internal methods (<ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/internal-adapters.ts" />):
-`findUserByEmail`, `createUser`, `createOAuthUser`, `findOAuthUser`, `findAccounts`,
-`findAccountByProviderId`, `linkAccount`.
+Code outside the HTTP handler that needs a session calls `getSessionForRequest(headers)`
+(the proxy; tenant from the client's `x-app-id`) or `getAdminSession(headers)` (the admin
+API; tenant forced to the admin scope), both of which wrap `auth.api.getSession` in a
+tenant store the same way. Calling `auth.api.*` directly throws `TenantContextError`.
+
+The admin-portal scope is `application_id IS NULL`. Better Auth's `Where` type cannot
+express `IS NULL` (the Drizzle adapter compiles `eq(field, null)` to `= NULL`), so for
+that scope the wrapper fetches the candidate rows with the caller's predicate, filters
+`applicationId == null` in memory, and re-issues writes by id. Replacing the NULL sentinel
+with a real "au1h system" application (§5.5) would remove that branch.
 
 ### 3.2 Proxied API request (`/proxy/*`)
 
 `x-app-id` → match `application_routes` (30s cache, `/todos/*` and `/todos/:id`
-patterns) → resolve session → strip client-supplied context headers → inject
-`x-app-id`, `x-app-slug`, `x-user-id`, `x-user-email` → `fetch` the backend → stream the
-response back. <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/proxy/middleware.ts" />
+patterns) → **authenticate**: `Authorization: Bearer <au1h JWT>` (signature via our JWKS,
+`exp`, `iss`/`aud`, and `applicationId` claim must equal the route's application, else
+403) or the session cookie (resolved in the `x-app-id` tenant, and
+`session.applicationId` must equal the route's application, else 403); neither → 401 →
+strip client-supplied context headers → inject `x-app-id`, `x-app-slug`, `x-user-id`,
+`x-user-email`, `x-forwarded-proto` (the real scheme) and `x-au1h-token` (a 60-second
+au1h-signed JWT with `aud = <slug>`, so a backend can prove the hop came through au1h
+by verifying it against the public JWKS) → `fetch` the backend with the request body
+streamed and a timeout (`AU1H_PROXY_TIMEOUT_MS`, 504 on expiry) → stream the response back.
+<ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/proxy/middleware.ts" />
+
+### 3.3 Admin API (`/api/v1/*`)
+
+`health` is public. `applications`, `users` and `routes` all mount `requireOrgSession`
+(<ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/middleware/require-org-session.ts" />):
+an admin-portal session with an active organization, else 401/403. Controllers read the
+organization from the Hono context and every service function filters on it: applications
+by `organization_id`; users that belong to the org's applications or are members of the
+org; proxy routes joined through their application. Proxy route `backendUrl`s must be
+`http(s)` without credentials and, in production (or when
+`AU1H_PROXY_ALLOW_PRIVATE_BACKENDS=false`), must not target loopback/private/link-local
+addresses (<ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/routes-config/backend-url.ts" />).
+
+### 3.4 Server-to-server API (`/api/apps/*`)
+
+For product backends, authenticated with the **application secret**
+(`x-app-id: <slug>` + `x-app-secret`, checked against the stored scrypt hash by
+`requireAppSecret`). `GET /api/apps/me` confirms credentials; `POST /api/apps/introspect`
+`{ token }` verifies either an au1h JWT (offline, bound to the app) or a raw session token
+(looked up in the app's tenant, so revocation and bans apply immediately) and returns
+`{ active, user, expiresAt }`. <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/apps/controller.ts" />
+
+### 3.5 Rate limits and caches
+
+`/proxy/*`, `/api/v1/*` and `/api/apps/*` sit behind a Redis fixed-window limiter keyed by
+client IP (plus app slug where relevant); `x-forwarded-for` is trusted only with
+`AU1H_TRUST_PROXY=true`. Better Auth's own limiter covers `/api/auth/*` and uses Redis as
+its store. The in-process read caches (application origins, id→slug, proxy routes) are
+cleared on every instance through a Redis pub/sub bus (`utils/cache-bus.ts`).
 
 ---
 
@@ -105,20 +169,21 @@ response back. <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/p
 
 | Area              | Files                        | State |
 | ----------------- | ---------------------------- | ----- |
-| Multi-tenant auth | `src/lib/auth/*`             | Works for the happy paths in `docs/new-flow.md` |
+| Multi-tenant auth | `src/lib/auth/*`             | Adapter-level scoping via `AsyncLocalStorage` (§5.1 done) |
 | Email + password  | Better Auth `emailAndPassword` | Done |
-| GitHub OAuth      | `socialProviders.github`     | Done (Google is in `.env.example` and the docs, but **not** wired up) |
+| GitHub / Google OAuth | `socialProviders`        | Each enabled when its client id + secret are set |
 | JWT + JWKS        | `jwt()` plugin, `applicationId` claim | Done |
 | Admin / org plugins | `admin()`, `organization()` | Done |
-| Sessions          | Postgres + Redis secondary storage | Done |
+| Sessions          | Postgres + Redis secondary storage | Done; revocation and bans clear both |
 | Applications CRUD | `src/applications/*`         | Done, org-scoped |
-| Users admin       | `src/users/*`                | Done — **but unauthenticated** (§5.3) |
-| Proxy route CRUD  | `src/routes-config/*`        | Done — **but unauthenticated** (§5.3) |
-| API gateway       | `src/proxy/*`                | Done — **but unauthenticated** (§5.4) |
+| Users admin       | `src/users/*`                | Done, org-scoped (§5.3) |
+| Server-to-server  | `src/apps/*`                 | `GET /me`, `POST /introspect`, app-secret authenticated (§5.6) |
+| Proxy route CRUD  | `src/routes-config/*`        | Done, org-scoped + backend URL policy (§5.3) |
+| API gateway       | `src/proxy/*`                | Done, requires session or JWT bound to the route's app (§5.4) |
 | Health            | `src/health/*`               | DB ping |
-| Migrations        | 3 Drizzle migrations         | Applied |
+| Migrations        | 4 Drizzle migrations         | `0003` adds the `NULLS NOT DISTINCT` unique constraints |
 | RLS (Phase 1F)    | —                            | Not started |
-| Tests             | —                            | **None** |
+| Tests             | `src/**/*.test.ts`           | Unit tests: tenant adapter, session cache, admin allowlist, backend URL policy, secret hashing (`bun test`); no integration tests yet |
 
 ### Admin portal (`apps/web`, React + TanStack Router + shadcn, port 4445)
 
@@ -137,242 +202,220 @@ user detail with sessions and ban/unban, a docs page.
 
 Ordered by severity. §5.1–§5.7 are things I'd fix before this handles anyone's real users.
 
-### 5.1 The internal-adapter override is not concurrency-safe — this is the big one
+### 5.1 ~~The internal-adapter override is not concurrency-safe~~ — fixed
 
-`betterAuth()` calls `init(options)` **once** and every request does
-`const ctx = await authContext` on that same object:
+**Status: fixed (2026-09-05).** The original design rewrote
+`ctx.context.internalAdapter` on every request. `betterAuth()` calls `init(options)` once
+and every request shares that object, so two concurrent sign-ins from different apps could
+interleave and a user could be created under the wrong tenant.
 
-```js
-// better-auth/dist/shared/better-auth.CDx1PoNO.mjs
-const betterAuth = (options) => {
-  const authContext = init(options);          // created ONCE
-  return { handler: async (request) => { const ctx = await authContext; /* ... */ } };
-};
-```
+The replacement is the design recommended here: one Better Auth instance, one adapter, and
+the tenant read from request-scoped storage.
 
-So `ctx.context.internalAdapter` is **process-global state**, and
-`overrideInternalAdapters()` rewrites it on every request
-(<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/hooks-middleware.ts" lines="188-213" />).
-Two concurrent sign-ins from different apps will interleave: request A patches the
-adapter for `app-todo`, request B overwrites it with `app-books`, then A's `createUser`
-runs with B's `applicationId`. Consequences are silent cross-tenant writes — a user
-created under the wrong app, or a login validated against another tenant's credentials.
-It works today only because you're testing one request at a time.
+- `lib/auth/tenant-context.ts` — `AsyncLocalStorage` holding `{ applicationId }`. A store
+  is opened per request by `handleAuthRequest()` / `getSessionForRequest()` and filled by
+  `hooks.before`. (`enterWith` is deliberately not used: in Bun it does not propagate to
+  the caller's continuation; `run` + mutating the shared store object does.)
+- `lib/auth/tenant-adapter.ts` — `withTenantScoping(adapter)` wraps the Drizzle adapter
+  returned by `drizzleAdapter(...)(options)` and confines every `user`/`session`/`account`
+  operation to the current tenant, including `update*`/`delete*` and transactions.
+  Missing tenant → `TenantContextError`, never an unscoped query.
+- The seven hand-written `internalAdapter` overrides (`internal-adapters.ts`) are gone,
+  along with their duplicated `crypto.randomUUID()` + `db.insert()` logic, the
+  `accountToInsert` log line (§5.7), and the debug full-table scan in `findOAuthUser`.
+- `lib/auth/tenant-secondary-storage.ts` — the same check for the Redis session cache.
+  `findSession` reads `secondaryStorage.get(token)` *before* the database, so the adapter
+  alone would not stop a session cookie issued for app A from being accepted on a request
+  for app B. A cached session whose `applicationId` differs from the request's tenant is
+  reported as a miss; the fall-through database lookup is scoped and misses too. Result: a
+  session token issued for app A resolves to `null` under `x-app-id: B`, which the old
+  overrides never covered.
 
-**Recommended fix — `AsyncLocalStorage` + adapter-level scoping.** Keep one Better Auth
-instance and one set of adapter functions; read the tenant from request-scoped storage
-instead of mutating shared objects:
+Unit tests: `apps/server/src/lib/auth/tenant-adapter.test.ts` (`bun test`) cover email
+lookup per tenant, cross-tenant writes by known id, the NULL/admin scope, transactions,
+and 30 interleaved concurrent requests.
 
-```ts
-export const appContext = new AsyncLocalStorage<{ applicationId: string | null }>();
+Still true: **pin Better Auth (`1.3.34`) and run the tests before upgrading.** The wrapper
+depends only on the public `Adapter`/`Where` contract, but the NULL-scope branch assumes
+Better Auth never uses `select` to drop `applicationId`, and it must be revisited if a
+future version adds an `is_null` operator (at which point the branch can go away).
 
-// hooks.before: resolve tenant, then appContext.enterWith({ applicationId })
-// adapters: const { applicationId } = appContext.getStore() ?? { applicationId: null };
-```
+### 5.2 ~~Admin privilege is decided by a spoofable header~~ — fixed
 
-Then move the scoping **down into a wrapped Drizzle adapter** (inject the
-`application_id` predicate into `findOne`/`findMany` and the value into `create`)
-rather than reimplementing seven `internalAdapter` methods. That is far less surface
-area to keep in sync with Better Auth, and it removes the hand-written `crypto.randomUUID()`
-+ `db.insert()` duplication in `internal-adapters.ts`. Alternative (heavier) design: a
-`Map<applicationId, ReturnType<typeof betterAuth>>` of per-app instances.
+**Status: fixed (2026-09-05).** `isDirectAdminOrigin()` trusted `Origin`/`Referer`, so
+`curl -H 'Origin: http://localhost:4445' .../sign-up/email` created an admin-portal user
+with its own organization.
 
-Either way: **pin Better Auth (already done: `1.3.34`) and add tests before upgrading.**
-These overrides depend on undocumented internals — argument order in `findOAuthUser`,
-the `{ user, accounts }` return shape, etc. A patch release can break tenant isolation
-without a type error.
+Now:
 
-### 5.2 Admin privilege is decided by a spoofable header
+- The admin portal is an explicit tenant: it sends `x-app-id: au1h-admin`
+  (`AU1H_ADMIN_APP_SLUG`, mirrored as `VITE_AU1H_ADMIN_APP_SLUG` in `apps/web`). The slug
+  is reserved; `POST /api/v1/applications` rejects it. `Origin`/`Referer`, the Redis
+  `oauth-admin:<ip>` marker, `getClientIp`, and the `au1h-is-admin` /
+  `au1h-is-client-app` cookies are gone (`lib/auth/admin.ts`, `hooks-middleware.ts`).
+- Selecting the admin scope grants nothing: admin **sign-up** is refused with 403 unless
+  the email matches `AU1H_ADMIN_EMAILS` (exact addresses or `@domain`s), has a pending
+  organization invitation, or no admin exists yet (first-run bootstrap). Enforced in
+  `databaseHooks.user.create.before`, so it covers email/password and OAuth sign-ups.
+- An OAuth callback that cannot recover a tenant from the `au1h-app-id` cookie now fails
+  with 401 instead of defaulting to the admin scope.
 
-`isDirectAdminOrigin()` trusts `Origin` / `Referer`
-(<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/app-context.ts" lines="219-230" />).
-Browsers set these honestly; `curl` does not. Anyone can do:
+Still open from §5.9: the tenant travels through an unsigned cookie and the OAuth
+`state` check is skipped in dev.
 
-```
-curl -X POST https://au1h/api/auth/sign-up/email -H 'Origin: http://localhost:4445' ...
-```
+### 5.3 ~~The v1 admin API has no authentication at all~~ — fixed
 
-and be treated as an au1h admin-portal signup — `applicationId = NULL`, auto-created
-organization, and from there full access to the applications API. That's privilege
-escalation to tenant-admin from an unauthenticated request.
+**Status: fixed (2026-09-05).** `/api/v1/users` and `/api/v1/routes` had no session check
+and no org scoping; `POST /api/v1/routes` could register a route for any application
+pointing at any URL (traffic hijack + SSRF).
 
-Fix: make the admin portal an explicitly registered application (or a dedicated
-`/api/admin/auth/*` base path) authenticated by a server-side secret, and gate admin
-signup behind an invite/allowlist. Never infer trust from `Origin`.
+Now (§3.3): `requireOrgSession` on every v1 router except `health`; all `users/service.ts`
+and `routes-config/service.ts` functions take `organizationId` and filter on it;
+`routes-config` verifies the target application belongs to the caller's organization
+(404 otherwise) and validates `backendUrl` (`http(s)` only, no credentials, no private /
+loopback / link-local targets in production). Request bodies are zod-validated. Banning a
+user also revokes their sessions, and session revocation clears the Redis cache entries
+as well as the Postgres rows (part of §5.8).
 
-### 5.3 The v1 admin API has no authentication at all
+Not covered: the literal-hostname check does not detect DNS rebinding to a private
+address; a resolve-then-connect check or an egress allowlist would.
 
-`src/routes.ts` mounts `/api/v1/users` and `/api/v1/routes` with **zero** session check
-and no org scoping:
+### 5.4 ~~The proxy authenticates nothing~~ — fixed
 
-- `GET /api/v1/users` — dump every user of every tenant.
-- `POST /api/v1/users/:id/ban`, `DELETE /api/v1/users/:id/sessions` — ban anyone,
-  kill anyone's sessions.
-- `POST /api/v1/routes` — register a proxy route for **any** `applicationId`, pointing at
-  any URL. That is both traffic hijacking and an SSRF primitive (au1h will fetch
-  internal addresses for you).
+**Status: fixed (2026-09-05).** `getUserContext()` swallowed errors and forwarded anonymous
+requests with no `x-user-id`, and never compared the session's application with the
+route's.
 
-Only `src/applications/*` checks a session, via `getActiveOrganizationId()`
-(<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/applications/controller.ts" lines="36-43" />).
+Now (§3.2): the proxy accepts either an au1h-minted JWT (`Authorization: Bearer`, verified
+with `jose` against our own JWKS; `iss`/`aud`/`exp`; `applicationId` claim must equal the
+route's application) or the session cookie (resolved in the `x-app-id` tenant, and
+`session.applicationId` must equal the route's application). Anything else is 401;
+a credential from another application is 403. `x-user-id`/`x-user-email` are therefore
+always present on forwarded requests.
 
-Fix: one `requireOrgSession` Hono middleware applied to the whole `/api/v1` router;
-every service function takes `organizationId` and filters on it, as `applications/service.ts`
-already does. `routes-config` must verify the target application belongs to the caller's org,
-and `backendUrl` should be validated against an allowlist / blocked from private IP ranges.
+Still open: the app secret / mTLS on the gateway→backend hop (§5.6), so backends can be
+called directly by anyone who can reach them.
 
-### 5.4 The proxy authenticates nothing
+### 5.5 ~~The composite unique constraints don't do what they look like~~ — fixed
 
-`getUserContext()` swallows session errors and returns `{}`
-(<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/proxy/middleware.ts" lines="44-59" />),
-and the request is forwarded regardless. So any anonymous caller with a valid
-`x-app-id` reaches the backend — while the backend has been told by
-`docs/INTEGRATION.md` that these headers are trustworthy and that "no exposed backend
-endpoints" exist. Worse, the session's `applicationId` is never compared with the
-matched route's application, so a session issued for app A can drive app B's routes.
+**Status: fixed (2026-09-05).** `CREATE UNIQUE INDEX ... (email, application_id)` treated
+every `NULL` as distinct, so duplicate admin-portal emails were possible. Migration
+`0003_unique_nulls_not_distinct` replaces both indexes with
+`UNIQUE NULLS NOT DISTINCT` constraints (Postgres 15+; the schema uses
+`unique().nullsNotDistinct()`), on `users (email, application_id)` and
+`accounts (provider_id, account_id, application_id)`. Verified: inserting a second admin
+row with an existing email now fails.
 
-Fix: reject with 401 when there's no session; assert
-`session.session.applicationId === route.applicationId`; support `Authorization: Bearer`
-JWT (verify signature, expiry, and the app claim) alongside cookies. Optionally require
-the app secret / mTLS on the gateway→backend hop so backends can't be called directly.
+The NULL sentinel itself stays. Replacing it with a real "au1h system" application row
+would still simplify the adapter's admin-scope branch (§5.1); it is no longer needed for
+correctness.
 
-### 5.5 The composite unique constraints don't do what they look like
+### 5.6 ~~The application secret is decorative~~ — fixed
 
-```sql
-CREATE UNIQUE INDEX users_email_app_unique ON users (email, application_id);
-```
+**Status: fixed (2026-09-05).** Secrets were random UUIDs stored in plaintext and never
+checked.
 
-In Postgres, `NULL` values are **distinct**, so this index does not prevent duplicate
-emails among admin-portal users (`application_id IS NULL`) — the one group where email
-*must* be unique. `accounts_provider_app_unique` has the same hole. `PLAN.md` §1C is
-marked done, but the guarantee isn't there.
+Now (`applications/secret.ts`): secrets are `au1h_sk_` + 32 random bytes, shown once on
+create/regenerate, and stored as an scrypt hash (Better Auth's password hasher). They
+authenticate the server-to-server API (§3.4): `GET /api/apps/me` and
+`POST /api/apps/introspect`. Rows created before hashing hold a UUID, which never
+verifies; those applications must regenerate their secret from the admin portal.
 
-Fix: either `UNIQUE NULLS NOT DISTINCT` (PG 15+), or a pair of partial indexes
-(`WHERE application_id IS NOT NULL` / `WHERE application_id IS NULL`), or replace the
-`NULL` sentinel with a real "au1h system" application row — which would also delete a lot
-of `isNull()` branching from `internal-adapters.ts` and make `users`/`accounts.application_id`
-`NOT NULL` again.
+What the secret deliberately does **not** do: gate `/api/auth/*`. Browser SPAs cannot hold
+a secret, so tenant *selection* by `x-app-id` stays public (like an OAuth `client_id`),
+and the isolation guarantees come from §5.1/§5.4 instead. For the gateway→backend hop the
+proxy attaches `x-au1h-token`, an au1h-signed 60-second JWT with `aud = <slug>`, which
+backends verify against the JWKS — no shared secret needed. Also fixed here:
+`allowedOrigins` is documented as comma-separated (it always was; the schema comment was
+wrong).
 
-### 5.6 The application secret is decorative
+### 5.7 ~~Tokens and passwords are written to logs~~ — fixed
 
-`createApplication()` stores `crypto.randomUUID()` in plaintext, despite the schema
-comment `// Hashed API secret for backend auth`
-(<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/applications/service.ts" lines="160-184" />),
-and **nothing in the codebase ever verifies it**. Apps are identified purely by the
-client-supplied `x-app-id` slug. So "app registration" is not an authentication boundary —
-any caller can claim any app's identity.
+**Status: fixed (2026-09-05).** The account-row dump and the `🔥` tracing lines went with
+§5.1/§5.2. `utils/logger.ts` now redacts `accessToken`, `refreshToken`, `idToken`,
+`password`, `token`, `secret`, `secretHash`, `authorization`, `cookie` and `set-cookie`
+at any nesting depth, takes its level from `LOG_LEVEL` (default `debug` in dev, `info`
+in production), and only uses `pino-pretty` outside production.
 
-Fix: hash the secret at rest (Argon2/scrypt — Better Auth already ships a hasher), and
-require it on the operations that matter: server-to-server calls, proxy registration,
-and ideally an `x-app-secret` (or signed request) on auth endpoints so tenant selection
-can't be forged. Also note `applications.allowedOrigins` is documented as "JSON array"
-in the schema comment but is parsed as a comma-separated string.
+### 5.8 ~~Session revocation doesn't revoke~~ — fixed
 
-### 5.7 Tokens and passwords are written to logs
-
-`logger.info({ accountToInsert: newAccount }, "🔥 About to insert account")`
-(<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/internal-adapters.ts" lines="173-173" />)
-serialises the whole account row — `accessToken`, `refreshToken`, `idToken`, and the
-password hash — at `info` level. Same category: nearly every `🔥` line logs emails and
-tenant ids at `info` on the hot path.
-
-Fix: add a Pino redaction list (`accessToken`, `refreshToken`, `idToken`, `password`,
-`token`, `secret`), drop these to `debug`, and delete the emoji-prefixed
-developer-tracing logs. While in there, remove the "DEBUG: all matching accounts" query
-in `createFindOAuthUser` — it's an extra full table scan on every OAuth login
-(<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/internal-adapters.ts" lines="221-249" />).
-
-### 5.8 Session revocation doesn't revoke
-
-Sessions are stored in Postgres **and** in Redis via `secondaryStorage`, but
-`revokeSession` / `revokeAllUserSessions` delete only the Postgres rows
-(<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/users/service.ts" lines="234-250" />).
-Better Auth reads secondary storage first, so a "revoked" session can keep working until
-its TTL expires. Same concern for ban: `banUser` flips the column but doesn't kill
-sessions. Use `auth.api.revokeSession` / `revokeUserSessions` instead of raw deletes.
+**Status: fixed (2026-09-05).** `users/service.ts` deletes the Postgres rows *and* the
+Redis entries (`<token>` and `active-sessions-<userId>`) for `revokeSession` /
+`revokeAllUserSessions`, and `banUser` revokes all of the user's sessions. Verified
+end-to-end: a banned user's `get-session` returns `null` immediately.
 
 ### 5.9 OAuth context plumbing is fragile
 
-The app slug survives the OAuth round-trip through a stack of unsigned cookies
-(`au1h-app-id`, `au1h-is-client-app`, `au1h-is-admin`) plus a Redis marker **keyed by
-client IP** (`oauth-admin:${clientIp}`). Problems:
+**Status: partly fixed.** The Redis IP marker and the `au1h-is-admin` /
+`au1h-is-client-app` cookies were removed in §5.2, and `skipStateMismatch()` is now
+opt-in (`AU1H_SKIP_OAUTH_STATE_CHECK=true`, dev only) instead of always on outside
+production. The app slug still survives the OAuth round-trip through the unsigned
+`au1h-app-id` cookie. Remaining problems:
 
-- `au1h-app-id` is populated straight from a client-supplied header, so the tenant is
-  attacker-selectable, and a stale cookie silently redirects a signup into the wrong app.
-- IP keying collides for users behind the same NAT/proxy, and lets an unauthenticated
-  request pre-plant the "this is admin" marker for a victim's IP.
-- `getClientIp` reads `x-forwarded-for` without knowing whether a trusted proxy set it.
-- `skipStateMismatch()` disables OAuth state checking in dev
+- `au1h-app-id` is populated straight from a client-supplied header, so a stale cookie
+  can silently redirect a signup into the wrong app (the tenant itself is public, so
+  signing the cookie would not add security; carrying it in `state` would).
+- `skipStateMismatch()` still exists as an escape hatch
   (<ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/plugins.ts" />) — a
   workaround for cross-port localhost cookies. Fine as long as it can never ship, but it
   hides the real problem.
 
 Fix: carry the tenant in the OAuth `state` parameter (that's what it's for) or in a
-signed/HMAC'd cookie, and delete the Redis-IP-marker mechanism entirely.
+signed/HMAC'd cookie.
 
-### 5.10 JWT claims are under-specified
+### 5.10 ~~JWT claims are under-specified~~ — fixed
 
-`definePayload` emits `sub`, `email`, `name`, `applicationId`
-(<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/index.ts" lines="131-140" />)
-but `docs/INTEGRATION.md` tells integrators to read `payload.app_id` — the docs and the
-code disagree, so every published backend snippet gets `undefined`. More importantly
-there's no per-app `aud`/`iss`, and all apps share one JWKS: a token minted for the todo
-app verifies perfectly at the books app's backend. Nothing stops cross-app token reuse,
-which `.windsurf/rules/au1h-core.md` explicitly lists as a requirement.
-
-Fix: add `aud = <app slug>` (and `iss = au1h URL`), document that backends **must**
-verify `aud`, and align the docs on one claim name.
+**Status: fixed (2026-09-05).** Tokens now carry `iss = <au1h URL>`, `aud = <application
+slug>` (`au1h-admin` for admin-portal users), `sub`, `email`, `name`, `applicationId`.
+Backends verify `aud` against their own slug, so a token minted for the todo app is
+rejected by the books app's backend even though they share one JWKS. The proxy and
+`/api/apps/introspect` do the same check. `docs/INTEGRATION.md`, the admin portal's docs
+page and all four `examples/` verify `aud` and read `applicationId` (never `app_id`).
 
 ### 5.11 Operational / correctness gaps
 
-- **No tests.** Given §5.1, the priority test suite is: concurrent sign-ups across two
-  apps (must not cross-contaminate), same email in 2 apps + admin, login isolation
-  (app A password must fail on app B), OAuth link isolation, and proxy authz.
-- **Caches are per-process.** Origins (twice — `dynamic-cors.ts` and `app-context.ts`
-  duplicate the same query), and proxy routes, all in module-level `let` with TTLs.
-  Multi-instance deployments will serve stale CORS/routes for up to a minute, and
-  `invalidateOriginsCache()` only clears the local copy. Redis is already connected —
-  use it, or pub/sub the invalidation.
-- **Admin users are invisible in the Users page.** `listUsers`/`getUser` `innerJoin`
-  `applications`, which drops every `application_id IS NULL` row
-  (<ref_snippet file="/Users/AD12-codes/projects/au1h/apps/server/src/users/service.ts" lines="101-102" />).
-  Should be a `leftJoin`. Relatedly `interface User.applicationId: string` is typed
-  non-nullable but the column is nullable.
-- **No rate limiting on `/api/v1/*` or `/proxy/*`.** Better Auth's own limiter covers
-  `/api/auth/*` and only when `NODE_ENV=production` — note the codebase gates DB
-  selection on `APP_ENV` and cookies/CORS on `NODE_ENV`; two env vars for one concept
-  is a footgun.
-- **Proxy details:** `x-forwarded-proto` is hardcoded to `https`; the whole request body
-  is buffered into memory (`arrayBuffer()`), so large uploads/streaming won't work; there's
-  no timeout on the backend `fetch`; backend `Set-Cookie` is passed through untouched.
-- **RLS (Phase 1F) never started.** It's the defence-in-depth that makes §5.1-class bugs
-  non-catastrophic, and `.windsurf/rules/au1h-core.md` treats it as a core requirement.
-  Worth doing once tenant context lives in `AsyncLocalStorage`, since you can then
-  `SET LOCAL app.application_id` per transaction.
-- **Dead code / drift:** `src/lib/auth.reference.ts`, the unused exported
-  `getAppSlugFromRequest` in `app-context.ts` (a second, divergent copy of the logic in
-  `hooks-middleware.ts`), `src/test.html`, the unused "pool metadata" half of
-  `utils/redis.ts`, and `db:seed` pointing at a `src/db/seed.ts` that doesn't exist.
-- **Docs drift:** root `README.md` is still the unmodified Better-T-Stack template and
-  describes a `packages/{api,auth,db}` layout that doesn't exist. `PLAN.md` claims
-  "Phase 3: 100%" while its own header-contract item is unchecked, and is dated
-  December 2024. Google OAuth appears in `.env.example`, `docs/new-flow.md`, and
-  `docs/INTEGRATION.md` but not in `lib/auth/index.ts`.
+- **Only unit tests.** The tenant adapter is unit-tested (§5.1); there are no
+  integration tests against Postgres. The priority integration suite is: concurrent
+  sign-ups across two apps, same email in 2 apps + admin, login isolation (app A password
+  must fail on app B), OAuth link isolation, and proxy authz.
+- ~~**Caches are per-process.**~~ Done: one origins cache shared by CORS and the auth
+  layer, and invalidation of origins/slugs/routes is broadcast to every instance over
+  Redis pub/sub (`utils/cache-bus.ts`). TTLs remain as a safety net.
+- ~~**Admin users are invisible in the Users page.**~~ Done (`leftJoin`; admin users of
+  the caller's own organization are listed; `User.applicationId` is nullable).
+- ~~**No rate limiting on `/api/v1/*` or `/proxy/*`.**~~ Done (§3.5). Better Auth's
+  limiter is now always on (Redis store) unless `AU1H_AUTH_RATE_LIMIT=false`. Still
+  true: DB selection is gated on `APP_ENV` while cookies/CORS/policies use `NODE_ENV`;
+  the two variables should be collapsed once the deployment's env files are reviewed.
+- **Proxy details:** done — `x-forwarded-proto` reflects the real scheme, the request
+  body is streamed, and the backend `fetch` has a timeout (504). Backend `Set-Cookie`
+  is still passed through untouched, deliberately (backends may need their own cookies).
+- **RLS (Phase 1F) not started.** Still the one big defence-in-depth item. The tenant now
+  lives in `AsyncLocalStorage`, so the shape is clear: run each adapter call in a
+  transaction, `SET LOCAL app.application_id`, and add policies on `users`, `sessions`,
+  `accounts`. It touches every query path, so it should be its own change with its own
+  tests.
+- ~~**Dead code / drift.**~~ Done: `getAppSlugFromRequest`, the pool-metadata half of
+  `utils/redis.ts` and the `db:seed` script are gone.
+- ~~**Docs drift.**~~ Done: root `README.md` describes au1h; `PLAN.md` points here as
+  the source of truth; Google OAuth is wired (enabled when its credentials are set).
 
 ---
 
 ## 6. Suggested order of work
 
-1. **Fix tenant isolation properly** (§5.1) — `AsyncLocalStorage` + adapter-level
-   scoping. Everything else is built on this.
-2. **Write the isolation test suite** (§5.11) so #1 is provable and Better Auth upgrades
-   stop being scary.
-3. **Close the authz holes** (§5.3, §5.4, §5.2) — `requireOrgSession` on `/api/v1`,
-   require a session + app match in the proxy, stop trusting `Origin` for admin.
-4. **Make app identity real** (§5.6) — hash the secret and actually verify it.
-5. **Fix the unique indexes** (§5.5) and session revocation (§5.8).
-6. **Clean up logging** (§5.7) and delete the debug query.
-7. **Harden the OAuth flow** (§5.9) — tenant in `state`, drop the IP marker.
-8. **Then** the polish: JWT `aud` (§5.10), shared caches, RLS, dead code, docs.
+1. ~~**Fix tenant isolation properly** (§5.1)~~ — done: `AsyncLocalStorage` +
+   adapter-level scoping.
+2. **Write the integration test suite** (§5.11) against Postgres so #1 stays provable and
+   Better Auth upgrades stop being scary.
+3. ~~**Close the authz holes** (§5.3, §5.4, §5.2)~~ — done.
+4. ~~**Make app identity real** (§5.6)~~ — done.
+5. ~~**Fix the unique indexes** (§5.5) and session revocation (§5.8)~~ — done.
+6. ~~**Clean up logging** (§5.7)~~ — done.
+7. **Harden the OAuth flow** (§5.9) — carry the tenant in `state`; remove the
+   dev-only state-check bypass once cross-port localhost OAuth is understood.
+8. ~~JWT `aud` (§5.10), shared caches, dead code, docs~~ — done. **Remaining:** RLS,
+   the `APP_ENV`/`NODE_ENV` split, and the integration test suite (#2).
 
 ---
 

@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
+import { AU1H_ADMIN_APP_SLUG } from "@/lib/auth/admin";
+import type { AdminEnv } from "@/middleware/require-org-session";
 import { logger } from "@/utils/logger";
 import {
   checkSlugExists,
@@ -18,7 +19,10 @@ const createAppSchema = z.object({
     .string()
     .min(1)
     .max(50)
-    .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
+    .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens")
+    .refine((slug) => slug !== AU1H_ADMIN_APP_SLUG, {
+      message: `"${AU1H_ADMIN_APP_SLUG}" is reserved for the au1h admin portal`,
+    }),
   allowedOrigins: z.string().optional(),
   redirectUris: z.string().optional(),
   logo: z.string().url().optional().nullable(),
@@ -29,28 +33,9 @@ const updateAppSchema = createAppSchema.partial().extend({
   isActive: z.boolean().optional(),
 });
 
-/**
- * Get active organization ID from session
- * SECURITY: Returns null if no valid session or no active organization
- */
-async function getActiveOrganizationId(c: Context): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: c.req.raw.headers });
-  // activeOrganizationId is added by organization plugin - cast to access it
-  const extendedSession = session?.session as
-    | { activeOrganizationId?: string }
-    | undefined;
-  return extendedSession?.activeOrganizationId ?? null;
-}
-
-export async function list(c: Context) {
+export async function list(c: Context<AdminEnv>) {
   try {
-    const organizationId = await getActiveOrganizationId(c);
-    if (!organizationId) {
-      return c.json(
-        { error: "No active organization. Please select an organization." },
-        403
-      );
-    }
+    const organizationId = c.get("organizationId");
 
     const apps = await listApplications(organizationId);
     return c.json({ applications: apps });
@@ -60,15 +45,9 @@ export async function list(c: Context) {
   }
 }
 
-export async function get(c: Context) {
+export async function get(c: Context<AdminEnv>) {
   try {
-    const organizationId = await getActiveOrganizationId(c);
-    if (!organizationId) {
-      return c.json(
-        { error: "No active organization. Please select an organization." },
-        403
-      );
-    }
+    const organizationId = c.get("organizationId");
 
     const id = c.req.param("id");
     const app = await getApplication(id, organizationId);
@@ -89,15 +68,9 @@ export async function get(c: Context) {
   }
 }
 
-export async function create(c: Context) {
+export async function create(c: Context<AdminEnv>) {
   try {
-    const organizationId = await getActiveOrganizationId(c);
-    if (!organizationId) {
-      return c.json(
-        { error: "No active organization. Please select an organization." },
-        403
-      );
-    }
+    const organizationId = c.get("organizationId");
 
     const body = await c.req.json();
     const parsed = createAppSchema.safeParse(body);
@@ -134,15 +107,9 @@ export async function create(c: Context) {
   }
 }
 
-export async function update(c: Context) {
+export async function update(c: Context<AdminEnv>) {
   try {
-    const organizationId = await getActiveOrganizationId(c);
-    if (!organizationId) {
-      return c.json(
-        { error: "No active organization. Please select an organization." },
-        403
-      );
-    }
+    const organizationId = c.get("organizationId");
 
     const id = c.req.param("id");
     const body = await c.req.json();
@@ -186,15 +153,9 @@ export async function update(c: Context) {
   }
 }
 
-export async function remove(c: Context) {
+export async function remove(c: Context<AdminEnv>) {
   try {
-    const organizationId = await getActiveOrganizationId(c);
-    if (!organizationId) {
-      return c.json(
-        { error: "No active organization. Please select an organization." },
-        403
-      );
-    }
+    const organizationId = c.get("organizationId");
 
     const id = c.req.param("id");
     const deleted = await deleteApplication(id, organizationId);
@@ -212,15 +173,9 @@ export async function remove(c: Context) {
   }
 }
 
-export async function regenerate(c: Context) {
+export async function regenerate(c: Context<AdminEnv>) {
   try {
-    const organizationId = await getActiveOrganizationId(c);
-    if (!organizationId) {
-      return c.json(
-        { error: "No active organization. Please select an organization." },
-        403
-      );
-    }
+    const organizationId = c.get("organizationId");
 
     const id = c.req.param("id");
     const result = await regenerateSecret(id, organizationId);

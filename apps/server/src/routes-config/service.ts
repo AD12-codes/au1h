@@ -39,100 +39,110 @@ export interface UpdateRouteInput {
   isActive?: boolean;
 }
 
-function parseRoute(row: {
-  id: string;
-  applicationId: string;
-  name: string;
-  pathPattern: string;
-  backendUrl: string;
-  methods: string;
-  stripPrefix: boolean;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}): AppRoute {
-  return {
-    ...row,
-    methods: JSON.parse(row.methods) as string[],
-  };
+const routeColumns = {
+  id: applicationRoutes.id,
+  applicationId: applicationRoutes.applicationId,
+  name: applicationRoutes.name,
+  pathPattern: applicationRoutes.pathPattern,
+  backendUrl: applicationRoutes.backendUrl,
+  methods: applicationRoutes.methods,
+  stripPrefix: applicationRoutes.stripPrefix,
+  isActive: applicationRoutes.isActive,
+  createdAt: applicationRoutes.createdAt,
+  updatedAt: applicationRoutes.updatedAt,
+  applicationName: applications.name,
+  applicationSlug: applications.slug,
+};
+
+function parseRoute<T extends { methods: string }>(
+  row: T
+): Omit<T, "methods"> & { methods: string[] } {
+  return { ...row, methods: JSON.parse(row.methods) as string[] };
 }
 
-export async function listRoutesByApplication(
-  applicationId: string
-): Promise<AppRoute[]> {
-  const routes = await db
-    .select()
-    .from(applicationRoutes)
-    .where(eq(applicationRoutes.applicationId, applicationId))
-    .orderBy(desc(applicationRoutes.createdAt));
-
-  return routes.map(parseRoute);
+/**
+ * Does `applicationId` belong to `organizationId`?
+ * SECURITY: every write goes through this so an organization can only
+ * configure proxy routes for its own applications.
+ */
+export async function applicationBelongsToOrganization(
+  applicationId: string,
+  organizationId: string
+): Promise<boolean> {
+  const [app] = await db
+    .select({ id: applications.id })
+    .from(applications)
+    .where(
+      and(
+        eq(applications.id, applicationId),
+        eq(applications.organizationId, organizationId)
+      )
+    )
+    .limit(1);
+  return Boolean(app);
 }
 
-export async function listAllRoutes(): Promise<AppRouteWithApp[]> {
-  const routes = await db
-    .select({
-      id: applicationRoutes.id,
-      applicationId: applicationRoutes.applicationId,
-      name: applicationRoutes.name,
-      pathPattern: applicationRoutes.pathPattern,
-      backendUrl: applicationRoutes.backendUrl,
-      methods: applicationRoutes.methods,
-      stripPrefix: applicationRoutes.stripPrefix,
-      isActive: applicationRoutes.isActive,
-      createdAt: applicationRoutes.createdAt,
-      updatedAt: applicationRoutes.updatedAt,
-      applicationName: applications.name,
-      applicationSlug: applications.slug,
-    })
+export async function listRoutes(
+  organizationId: string,
+  applicationId?: string
+): Promise<AppRouteWithApp[]> {
+  const conditions = [eq(applications.organizationId, organizationId)];
+  if (applicationId) {
+    conditions.push(eq(applicationRoutes.applicationId, applicationId));
+  }
+  const rows = await db
+    .select(routeColumns)
     .from(applicationRoutes)
     .innerJoin(
       applications,
       eq(applicationRoutes.applicationId, applications.id)
     )
+    .where(and(...conditions))
     .orderBy(desc(applicationRoutes.createdAt));
 
-  return routes.map((row) => ({
-    ...row,
-    methods: JSON.parse(row.methods) as string[],
-  }));
+  return rows.map(parseRoute);
 }
 
-export async function getRoute(id: string): Promise<AppRoute | null> {
-  const [route] = await db
-    .select()
+export async function getRoute(
+  organizationId: string,
+  id: string
+): Promise<AppRouteWithApp | null> {
+  const [row] = await db
+    .select(routeColumns)
     .from(applicationRoutes)
-    .where(eq(applicationRoutes.id, id));
-
-  return route ? parseRoute(route) : null;
-}
-
-export async function getActiveRouteByPattern(
-  applicationId: string,
-  pathPattern: string
-): Promise<AppRoute | null> {
-  const [route] = await db
-    .select()
-    .from(applicationRoutes)
+    .innerJoin(
+      applications,
+      eq(applicationRoutes.applicationId, applications.id)
+    )
     .where(
       and(
-        eq(applicationRoutes.applicationId, applicationId),
-        eq(applicationRoutes.pathPattern, pathPattern),
-        eq(applicationRoutes.isActive, true)
+        eq(applicationRoutes.id, id),
+        eq(applications.organizationId, organizationId)
       )
-    );
+    )
+    .limit(1);
 
-  return route ? parseRoute(route) : null;
+  return row ? parseRoute(row) : null;
 }
 
-export async function createRoute(input: CreateRouteInput): Promise<AppRoute> {
-  const id = crypto.randomUUID();
-  const now = new Date();
+export async function createRoute(
+  organizationId: string,
+  input: CreateRouteInput
+): Promise<AppRoute | null> {
+  if (
+    !(await applicationBelongsToOrganization(
+      input.applicationId,
+      organizationId
+    ))
+  ) {
+    return null;
+  }
 
+  const now = new Date();
   const [route] = await db
     .insert(applicationRoutes)
     .values({
-      id,
+      id: crypto.randomUUID(),
       applicationId: input.applicationId,
       name: input.name,
       pathPattern: input.pathPattern,
@@ -150,11 +160,16 @@ export async function createRoute(input: CreateRouteInput): Promise<AppRoute> {
 }
 
 export async function updateRoute(
+  organizationId: string,
   id: string,
   input: UpdateRouteInput
-): Promise<AppRoute | null> {
-  const updates: Record<string, unknown> = {};
+): Promise<AppRouteWithApp | null> {
+  const existing = await getRoute(organizationId, id);
+  if (!existing) {
+    return null;
+  }
 
+  const updates: Partial<typeof applicationRoutes.$inferInsert> = {};
   if (input.name !== undefined) {
     updates.name = input.name;
   }
@@ -175,36 +190,27 @@ export async function updateRoute(
   }
 
   if (Object.keys(updates).length === 0) {
-    return getRoute(id);
+    return existing;
   }
 
-  const [route] = await db
+  await db
     .update(applicationRoutes)
     .set(updates)
-    .where(eq(applicationRoutes.id, id))
-    .returning();
+    .where(eq(applicationRoutes.id, id));
 
-  if (route) {
-    invalidateRouteCache();
-  }
-  return route ? parseRoute(route) : null;
+  invalidateRouteCache();
+  return getRoute(organizationId, id);
 }
 
-export async function deleteRoute(id: string): Promise<boolean> {
-  const result = await db
-    .delete(applicationRoutes)
-    .where(eq(applicationRoutes.id, id))
-    .returning({ id: applicationRoutes.id });
-
-  if (result.length > 0) {
-    invalidateRouteCache();
+export async function deleteRoute(
+  organizationId: string,
+  id: string
+): Promise<boolean> {
+  const existing = await getRoute(organizationId, id);
+  if (!existing) {
+    return false;
   }
-  return result.length > 0;
-}
-
-export function toggleRouteActive(
-  id: string,
-  isActive: boolean
-): Promise<AppRoute | null> {
-  return updateRoute(id, { isActive });
+  await db.delete(applicationRoutes).where(eq(applicationRoutes.id, id));
+  invalidateRouteCache();
+  return true;
 }

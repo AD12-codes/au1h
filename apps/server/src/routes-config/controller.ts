@@ -1,163 +1,138 @@
 import type { Context } from "hono";
+import { z } from "zod";
+import type { AdminEnv } from "@/middleware/require-org-session";
+import { logger } from "@/utils/logger";
+import { validateBackendUrl } from "./backend-url";
 import {
   createRoute,
   deleteRoute,
   getRoute,
-  listAllRoutes,
-  listRoutesByApplication,
-  toggleRouteActive,
+  listRoutes,
   updateRoute,
 } from "./service";
 
-export async function list(c: Context) {
-  const applicationId = c.req.query("applicationId");
+const HTTP_METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+] as const;
 
-  if (applicationId) {
-    const routes = await listRoutesByApplication(applicationId);
-    return c.json({ routes });
+const methodsSchema = z
+  .array(z.string().min(1))
+  .min(1, "methods must be a non-empty array")
+  .transform((methods) => methods.map((m) => m.toUpperCase()))
+  .refine(
+    (methods) =>
+      methods.every((m) => (HTTP_METHODS as readonly string[]).includes(m)),
+    { message: `methods must be a subset of ${HTTP_METHODS.join(", ")}` }
+  );
+
+const backendUrlSchema = z.string().superRefine((url, ctx) => {
+  const problem = validateBackendUrl(url);
+  if (problem) {
+    ctx.addIssue({ code: "custom", message: problem });
   }
+});
 
-  const routes = await listAllRoutes();
+const createSchema = z.object({
+  applicationId: z.string().min(1),
+  name: z.string().min(1).max(100),
+  pathPattern: z.string().min(1).startsWith("/"),
+  backendUrl: backendUrlSchema,
+  methods: methodsSchema,
+  stripPrefix: z.boolean().optional(),
+});
+
+const updateSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  pathPattern: z.string().min(1).startsWith("/").optional(),
+  backendUrl: backendUrlSchema.optional(),
+  methods: methodsSchema.optional(),
+  stripPrefix: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+});
+
+function invalid(c: Context, error: z.ZodError) {
+  return c.json({ error: "Validation failed", details: error.flatten() }, 400);
+}
+
+export async function list(c: Context<AdminEnv>) {
+  const routes = await listRoutes(
+    c.get("organizationId"),
+    c.req.query("applicationId")
+  );
   return c.json({ routes });
 }
 
-export async function get(c: Context) {
-  const id = c.req.param("id");
-  const route = await getRoute(id);
-
+export async function get(c: Context<AdminEnv>) {
+  const route = await getRoute(c.get("organizationId"), c.req.param("id"));
   if (!route) {
     return c.json({ error: "Route not found" }, 404);
   }
-
   return c.json({ route });
 }
 
-export async function create(c: Context) {
-  const body = await c.req.json();
-
-  const { applicationId, name, pathPattern, backendUrl, methods, stripPrefix } =
-    body;
-
-  if (!(applicationId && name && pathPattern && backendUrl && methods)) {
-    return c.json(
-      {
-        error:
-          "Missing required fields: applicationId, name, pathPattern, backendUrl, methods",
-      },
-      400
-    );
+export async function create(c: Context<AdminEnv>) {
+  const parsed = createSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return invalid(c, parsed.error);
   }
 
-  if (!Array.isArray(methods) || methods.length === 0) {
-    return c.json({ error: "methods must be a non-empty array" }, 400);
+  const organizationId = c.get("organizationId");
+  const route = await createRoute(organizationId, parsed.data);
+  if (!route) {
+    // The application is not ours (or does not exist); do not leak which.
+    return c.json({ error: "Application not found" }, 404);
   }
 
-  const validMethods = [
-    "GET",
-    "POST",
-    "PUT",
-    "PATCH",
-    "DELETE",
-    "HEAD",
-    "OPTIONS",
-  ];
-  const invalidMethods = methods.filter(
-    (m: string) => !validMethods.includes(m.toUpperCase())
+  logger.info(
+    { routeId: route.id, applicationId: route.applicationId, organizationId },
+    "Proxy route created"
   );
-  if (invalidMethods.length > 0) {
-    return c.json(
-      { error: `Invalid methods: ${invalidMethods.join(", ")}` },
-      400
-    );
-  }
-
-  const route = await createRoute({
-    applicationId,
-    name,
-    pathPattern,
-    backendUrl,
-    methods: methods.map((m: string) => m.toUpperCase()),
-    stripPrefix,
-  });
-
   return c.json({ route }, 201);
 }
 
-export async function update(c: Context) {
-  const id = c.req.param("id");
-  const body = await c.req.json();
+export async function update(c: Context<AdminEnv>) {
+  const parsed = updateSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return invalid(c, parsed.error);
+  }
 
-  const existing = await getRoute(id);
-  if (!existing) {
+  const route = await updateRoute(
+    c.get("organizationId"),
+    c.req.param("id"),
+    parsed.data
+  );
+  if (!route) {
     return c.json({ error: "Route not found" }, 404);
   }
-
-  const { name, pathPattern, backendUrl, methods, stripPrefix, isActive } =
-    body;
-
-  if (methods !== undefined) {
-    if (!Array.isArray(methods) || methods.length === 0) {
-      return c.json({ error: "methods must be a non-empty array" }, 400);
-    }
-
-    const validMethods = [
-      "GET",
-      "POST",
-      "PUT",
-      "PATCH",
-      "DELETE",
-      "HEAD",
-      "OPTIONS",
-    ];
-    const invalidMethods = methods.filter(
-      (m: string) => !validMethods.includes(m.toUpperCase())
-    );
-    if (invalidMethods.length > 0) {
-      return c.json(
-        { error: `Invalid methods: ${invalidMethods.join(", ")}` },
-        400
-      );
-    }
-  }
-
-  const route = await updateRoute(id, {
-    name,
-    pathPattern,
-    backendUrl,
-    methods: methods?.map((m: string) => m.toUpperCase()),
-    stripPrefix,
-    isActive,
-  });
-
   return c.json({ route });
 }
 
-export async function remove(c: Context) {
-  const id = c.req.param("id");
-
-  const existing = await getRoute(id);
-  if (!existing) {
+export async function remove(c: Context<AdminEnv>) {
+  const deleted = await deleteRoute(c.get("organizationId"), c.req.param("id"));
+  if (!deleted) {
     return c.json({ error: "Route not found" }, 404);
   }
-
-  await deleteRoute(id);
   return c.json({ success: true });
 }
 
-export async function toggle(c: Context) {
-  const id = c.req.param("id");
-  const body = await c.req.json();
+export async function toggle(c: Context<AdminEnv>) {
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = z.object({ isActive: z.boolean() }).safeParse(body);
+  if (!parsed.success) {
+    return invalid(c, parsed.error);
+  }
 
-  const existing = await getRoute(id);
-  if (!existing) {
+  const route = await updateRoute(c.get("organizationId"), c.req.param("id"), {
+    isActive: parsed.data.isActive,
+  });
+  if (!route) {
     return c.json({ error: "Route not found" }, 404);
   }
-
-  const { isActive } = body;
-  if (typeof isActive !== "boolean") {
-    return c.json({ error: "isActive must be a boolean" }, 400);
-  }
-
-  const route = await toggleRouteActive(id, isActive);
   return c.json({ route });
 }

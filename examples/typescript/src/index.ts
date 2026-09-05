@@ -8,7 +8,6 @@ const AU1H_URL = (process.env.AU1H_URL ?? "http://localhost:4444").replace(
   ""
 );
 const APP_SLUG = process.env.AU1H_APP_SLUG ?? "example-typescript";
-const APP_ID = process.env.AU1H_APP_ID || null;
 
 // au1h publishes its signing keys (Ed25519 / EdDSA) at /api/auth/jwks.
 // createRemoteJWKSet fetches lazily and caches; unknown `kid`s trigger a refetch.
@@ -21,10 +20,12 @@ type Au1hClaims = JWTPayload & {
 };
 
 async function verifyAu1hToken(token: string): Promise<Au1hClaims> {
+  // `aud` is the application slug: a token minted for another au1h application
+  // fails here, so no separate tenant check is needed.
   const { payload } = await jwtVerify(token, JWKS, {
     algorithms: ["EdDSA"],
     issuer: AU1H_URL,
-    audience: AU1H_URL,
+    audience: APP_SLUG,
   });
   return payload as Au1hClaims;
 }
@@ -51,13 +52,6 @@ app.get("/api/me", async (c) => {
     return c.json({ error: `invalid token: ${reason}` }, 401);
   }
 
-  // Tenant check: a token from another au1h application must not be accepted here.
-  if (APP_ID && claims.applicationId !== APP_ID) {
-    return c.json(
-      { error: "token was issued for a different application" },
-      403
-    );
-  }
 
   return c.json({
     language: "typescript",

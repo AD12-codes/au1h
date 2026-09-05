@@ -1,10 +1,4 @@
-import {
-  boolean,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-} from "drizzle-orm/pg-core";
+import { boolean, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 
 // ============================================================================
 // ORGANIZATIONS - Workspace containers for applications (Better Auth plugin)
@@ -92,11 +86,12 @@ export const users = pgTable(
     banExpires: timestamp("ban_expires"),
   },
   (table) => ({
-    // Email unique per application (NULL applicationId = admin portal)
-    emailAppUnique: uniqueIndex("users_email_app_unique").on(
-      table.email,
-      table.applicationId
-    ),
+    // Email unique per application. NULLS NOT DISTINCT makes the admin-portal
+    // scope (application_id IS NULL) unique too; a plain unique index treats
+    // every NULL as distinct and would allow duplicate admin emails.
+    emailAppUnique: unique("users_email_app_unique")
+      .on(table.email, table.applicationId)
+      .nullsNotDistinct(),
   })
 );
 
@@ -158,12 +153,10 @@ export const accounts = pgTable(
       .notNull(),
   },
   (table) => ({
-    // Provider+Account unique per application (NULL = admin portal)
-    providerAppUnique: uniqueIndex("accounts_provider_app_unique").on(
-      table.providerId,
-      table.accountId,
-      table.applicationId
-    ),
+    // Provider+Account unique per application, including the NULL (admin) scope.
+    providerAppUnique: unique("accounts_provider_app_unique")
+      .on(table.providerId, table.accountId, table.applicationId)
+      .nullsNotDistinct(),
   })
 );
 

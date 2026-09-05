@@ -33,11 +33,11 @@ GET  /api/me  Authorization: Bearer <JWT>  ────────────�
 - The page talks to au1h directly with the `x-app-id` header. No auth code runs in the
   backend beyond verifying the JWT.
 - The backend fetches `GET {AU1H_URL}/api/auth/jwks` (public, no app context needed),
-  caches the keys, and verifies the token with `alg=EdDSA`, `iss=aud=AU1H_URL`.
-- The JWT carries `sub`, `email`, `name`, `applicationId`. Set `AU1H_APP_ID` to the app's
-  UUID (from the admin portal) and the backend rejects tokens minted for any other app
-  with `403`. Leave it empty to see that, without the pin, a token from one app verifies
-  at another (that is the cross-app reuse gap described in `docs/ARCHITECTURE.md` §5.10).
+  caches the keys, and verifies the token with `alg=EdDSA`, `iss=AU1H_URL` and
+  `aud=<its own slug>`.
+- The JWT carries `sub`, `email`, `name`, `applicationId`, and `aud` is the application
+  slug. Because every backend checks `aud` against its own `AU1H_APP_SLUG`, a token minted
+  for one app is rejected by every other app's backend (see `docs/ARCHITECTURE.md` §5.10).
 
 ## Setup
 
@@ -71,10 +71,9 @@ GET  /api/me  Authorization: Bearer <JWT>  ────────────�
    cd examples/typescript && bun install && bun run dev
    ```
 
-   Every backend reads `PORT`, `AU1H_URL` (default `http://localhost:4444`),
-   `AU1H_APP_SLUG` and optional `AU1H_APP_ID` from the environment; the defaults match
-   the table, so no configuration is needed for a local au1h. See each folder's
-   `.env.example`.
+   Every backend reads `PORT`, `AU1H_URL` (default `http://localhost:4444`) and
+   `AU1H_APP_SLUG` from the environment; the defaults match the table, so no
+   configuration is needed for a local au1h. See each folder's `.env.example`.
 
 ## Demo script
 
@@ -93,8 +92,7 @@ GET  /api/me  Authorization: Bearer <JWT>  ────────────�
    curl -H "authorization: Bearer <token from example-go>" http://localhost:8082/api/me
    ```
 
-   Without `AU1H_APP_ID` set, the Rust backend accepts it and shows Go's `applicationId`.
-   Start it with `AU1H_APP_ID=<example-rust uuid> cargo run` and the same call returns `403`.
+   The Rust backend answers `401`: the token's `aud` is `example-go`, not `example-rust`.
 
 ## Things to know
 
