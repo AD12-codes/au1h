@@ -171,14 +171,18 @@ async function resolveApplicationId(opts: {
   const isOAuthPath =
     path?.startsWith("/signin/") || path?.startsWith("/callback/");
 
-  if (!isOAuthPath) {
+  // Public, tenant-independent endpoints. Backends fetch the JWKS to verify
+  // JWTs and have no application context to send.
+  const isPublicPath = path === "/jwks" || path === "/ok";
+
+  if (!(isOAuthPath || isPublicPath)) {
     throw new APIError("UNAUTHORIZED", {
       message:
         "Unauthorized: Missing application context. Ensure x-app-id header is set.",
     });
   }
 
-  logger.info({ path }, "🔥 Allowing OAuth path through without app context");
+  logger.info({ path }, "🔥 Allowing path through without app context");
   return null;
 }
 

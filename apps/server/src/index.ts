@@ -18,26 +18,29 @@ app.use("/*", dynamicCorsMiddleware);
 
 // Middleware to persist x-app-id in cookie for OAuth flow
 // OAuth callbacks lose headers, so we store app context in a cookie
-app.use("/api/auth/*", (c, next) => {
-  const appId = c.req.header("x-app-id");
+app.use("/api/auth/*", async (c, next) => {
+  await next();
 
-  if (appId) {
-    // Store app-id in cookie for OAuth callback to read
-    // Also set isClientApp=true to indicate this is a client app flow
-    // Use append: true for multiple Set-Cookie headers
-    c.header(
-      "Set-Cookie",
-      `au1h-app-id=${appId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
-      { append: true }
-    );
-    c.header(
-      "Set-Cookie",
-      "au1h-is-client-app=true; Path=/; HttpOnly; SameSite=Lax; Max-Age=600",
-      { append: true }
-    );
+  const appId = c.req.header("x-app-id");
+  if (!appId) {
+    return;
   }
 
-  return next();
+  // Store app-id in cookie for OAuth callback to read
+  // Also set isClientApp=true to indicate this is a client app flow
+  //
+  // These MUST be appended to the final response *after* the handler ran.
+  // Hono's `c.header("Set-Cookie", ...)` before `next()` replaces every
+  // Set-Cookie header on the handler's Response, which silently dropped
+  // Better Auth's session cookie for any request carrying x-app-id.
+  c.res.headers.append(
+    "Set-Cookie",
+    `au1h-app-id=${appId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`
+  );
+  c.res.headers.append(
+    "Set-Cookie",
+    "au1h-is-client-app=true; Path=/; HttpOnly; SameSite=Lax; Max-Age=600"
+  );
 });
 
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
