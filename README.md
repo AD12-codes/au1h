@@ -1,10 +1,7 @@
-```
-                    _
-  __ _  _   _  _   | |__
- / _` || | | |/ |  | '_ \
-| (_| || |_| || |  | | | |
- \__,_| \__,_||_|  |_| |_|
-```
+<p align="center">
+  <img src="assets/app-icon.svg" width="96" alt="au1h">
+</p>
+<h1 align="center">au1h</h1>
 
 <p align="center">
   <a href="https://github.com/AD12-codes/au1h/actions/workflows/ci.yml"><img src="https://github.com/AD12-codes/au1h/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -160,6 +157,11 @@ cd apps/server && AU1H_TEST_DATABASE_URL=postgresql://…/au1h_test bun run test
 ## Security
 
 Please report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
+
+## Support
+
+au1h is free and self-hosted. If it saves you from wiring auth for the fifth time,
+you can [buy me a coffee](https://buymeacoffee.com/anshuldharmadhikari).
 
 ## License
 
