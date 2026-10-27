@@ -10,6 +10,7 @@ export interface Application {
   logo: string | null;
   metadata: string | null;
   isActive: boolean;
+  organizationsEnabled: boolean;
   createdAt: string;
   updatedAt: string;
   userCount?: number;
@@ -28,6 +29,7 @@ export interface CreateApplicationInput {
 export interface UpdateApplicationInput
   extends Partial<CreateApplicationInput> {
   isActive?: boolean;
+  organizationsEnabled?: boolean;
 }
 
 // API functions

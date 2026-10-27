@@ -916,6 +916,37 @@ if __name__ == "__main__":
 
 ---
 
+## Organizations inside your application
+
+Turn on **Organizations** for an application in the admin portal (Settings → Organizations).
+Your users can then use Better Auth's organization client as usual, always with the
+`x-app-id` header:
+
+```typescript
+import { organizationClient } from "better-auth/client/plugins";
+
+export const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_AUTH_URL,
+  plugins: [organizationClient()],
+  fetchOptions: { credentials: "include", headers: { "x-app-id": APP_SLUG } },
+});
+
+await authClient.organization.create({ name: "Acme", slug: "acme" });   // becomes active
+await authClient.organization.inviteMember({ email: "ad@gmail.com", role: "member" });
+await authClient.organization.setActive({ organizationId });
+const { data: session } = await authClient.getSession();            // session.activeOrganizationId
+```
+
+What au1h guarantees:
+
+- Organizations, memberships and invitations are **isolated per application**. The slug
+  `acme` can exist once in every application.
+- A person is one user per application. `ad@gmail.com` can be an individual user and a
+  member of several organizations within your app; inviting an existing user adds a
+  membership, it never creates a second account or fails.
+- An invitation inside your application never grants access to the au1h admin portal.
+- While Organizations is off for an application, `organization.create` returns 403.
+
 ## API Reference
 
 ### Authentication Endpoints

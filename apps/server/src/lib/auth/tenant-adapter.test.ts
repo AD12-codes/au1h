@@ -109,9 +109,7 @@ const seed = {
       applicationId: null,
     },
   ],
-  verification: [
-    { id: "v-1", identifier: "john@example.com", applicationId: "ignored" },
-  ],
+  jwks: [{ id: "k-1", publicKey: "pk", applicationId: "ignored" }],
 };
 
 const inScope = <T>(applicationId: string | null, fn: () => Promise<T>) =>
@@ -274,15 +272,15 @@ describe("withTenantScoping", () => {
   test("non-tenant models pass through untouched", async () => {
     const { adapter, calls } = fakeAdapter(seed);
     const scoped = withTenantScoping(adapter);
-    const where: Where[] = [{ field: "identifier", value: "john@example.com" }];
+    const where: Where[] = [{ field: "publicKey", value: "pk" }];
 
     const row = await inScope("app-todo", () =>
-      scoped.findOne<Row>({ model: "verification", where })
+      scoped.findOne<Row>({ model: "jwks", where })
     );
-    const outside = await scoped.findOne<Row>({ model: "verification", where });
+    const outside = await scoped.findOne<Row>({ model: "jwks", where });
 
-    expect(row?.id).toBe("v-1");
-    expect(outside?.id).toBe("v-1");
+    expect(row?.id).toBe("k-1");
+    expect(outside?.id).toBe("k-1");
     expect(calls[0].where).toEqual(where);
   });
 
@@ -346,5 +344,142 @@ describe("withTenantScoping", () => {
     );
 
     expect(results.every(Boolean)).toBe(true);
+  });
+});
+
+describe("organization and verification scoping", () => {
+  const orgSeed = {
+    organization: [
+      { id: "ws-admin", slug: "acme", applicationId: null },
+      { id: "org-todo", slug: "acme", applicationId: "app-todo" },
+      { id: "org-books", slug: "acme", applicationId: "app-books" },
+    ],
+    member: [
+      {
+        id: "m1",
+        organizationId: "org-todo",
+        userId: "u-todo",
+        applicationId: "app-todo",
+      },
+      {
+        id: "m2",
+        organizationId: "ws-admin",
+        userId: "u-admin",
+        applicationId: null,
+      },
+    ],
+  };
+
+  test("the same organization slug resolves to a different org per application", async () => {
+    const { adapter } = fakeAdapter(orgSeed);
+    const scoped = withTenantScoping(adapter);
+    const bySlug: Where[] = [{ field: "slug", value: "acme" }];
+
+    expect(
+      (
+        await inScope("app-todo", () =>
+          scoped.findOne<Row>({ model: "organization", where: bySlug })
+        )
+      )?.id
+    ).toBe("org-todo");
+    expect(
+      (
+        await inScope("app-books", () =>
+          scoped.findOne<Row>({ model: "organization", where: bySlug })
+        )
+      )?.id
+    ).toBe("org-books");
+    expect(
+      (
+        await inScope(null, () =>
+          scoped.findOne<Row>({ model: "organization", where: bySlug })
+        )
+      )?.id
+    ).toBe("ws-admin");
+  });
+
+  test("memberships of one application are invisible to another", async () => {
+    const { adapter } = fakeAdapter(orgSeed);
+    const scoped = withTenantScoping(adapter);
+    const byUser: Where[] = [{ field: "userId", value: "u-todo" }];
+
+    expect(
+      await inScope("app-todo", () =>
+        scoped.findMany<Row>({ model: "member", where: byUser })
+      )
+    ).toHaveLength(1);
+    expect(
+      await inScope("app-books", () =>
+        scoped.findMany<Row>({ model: "member", where: byUser })
+      )
+    ).toHaveLength(0);
+  });
+
+  test("verification identifiers are namespaced per application and transparent to callers", async () => {
+    const { adapter, tables, calls } = fakeAdapter({ verification: [] });
+    const scoped = withTenantScoping(adapter);
+    const byEmail: Where[] = [
+      { field: "identifier", value: "john@example.com" },
+    ];
+
+    const created = await inScope("app-todo", () =>
+      scoped.create<Row>({
+        model: "verification",
+        data: { identifier: "john@example.com", value: "a" },
+      })
+    );
+    await inScope("app-books", () =>
+      scoped.create({
+        model: "verification",
+        data: { identifier: "john@example.com", value: "b" },
+      })
+    );
+    await inScope(null, () =>
+      scoped.create({
+        model: "verification",
+        data: { identifier: "john@example.com", value: "c" },
+      })
+    );
+
+    // Callers never see the prefix; the store always has it.
+    expect(created.identifier).toBe("john@example.com");
+    expect(tables.verification.map((r) => r.identifier)).toEqual([
+      "app-todo:john@example.com",
+      "app-books:john@example.com",
+      "admin:john@example.com",
+    ]);
+
+    const books = await inScope("app-books", () =>
+      scoped.findMany<Row>({ model: "verification", where: byEmail, limit: 1 })
+    );
+    expect(books.map((r) => [r.value, r.identifier])).toEqual([
+      ["b", "john@example.com"],
+    ]);
+    expect(calls.at(-1)?.where).toEqual([
+      { field: "identifier", value: "app-books:john@example.com" },
+    ]);
+
+    await inScope("app-todo", () =>
+      scoped.delete({ model: "verification", where: byEmail })
+    );
+    expect(tables.verification.map((r) => r.value)).toEqual(["b", "c"]);
+    expect(
+      await inScope(null, () =>
+        scoped.findOne<Row>({ model: "verification", where: byEmail })
+      )
+    ).toMatchObject({ value: "c", identifier: "john@example.com" });
+  });
+
+  test("creating an organization stamps the application", async () => {
+    const { adapter, tables } = fakeAdapter(orgSeed);
+    const scoped = withTenantScoping(adapter);
+
+    await inScope("app-todo", () =>
+      scoped.create({
+        model: "organization",
+        data: { slug: "new", name: "New" },
+      })
+    );
+    expect(tables.organization.at(-1)?.applicationId).toBe("app-todo");
   });
 });

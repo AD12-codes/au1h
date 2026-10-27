@@ -29,6 +29,13 @@
       "when": 1788628203026,
       "tag": "0003_unique_nulls_not_distinct",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793104703012,
+      "tag": "0004_tenant_scoped_organizations",
+      "breakpoints": true
     }
   ]
 }

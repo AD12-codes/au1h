@@ -93,6 +93,7 @@ function ApplicationDetailPage() {
       redirectUris: application.redirectUris || "",
       logo: application.logo,
       isActive: application.isActive,
+      organizationsEnabled: application.organizationsEnabled,
     });
   }
 

@@ -4,14 +4,29 @@ import { boolean, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 // ORGANIZATIONS - Workspace containers for applications (Better Auth plugin)
 // Must be defined before applications for foreign key reference
 // ============================================================================
-export const organizations = pgTable("organizations", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  slug: text("slug").notNull().unique(),
-  logo: text("logo"),
-  createdAt: timestamp("created_at").notNull(),
-  metadata: text("metadata"),
-});
+// ============================================================================
+// ORGANIZATIONS - Better Auth organization plugin, tenant-scoped.
+// application_id IS NULL  → an au1h admin-portal workspace (owns applications)
+// application_id = app.id → an organization inside that client application
+// ============================================================================
+export const organizations = pgTable(
+  "organizations",
+  {
+    id: text("id").primaryKey(),
+    applicationId: text("application_id"),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    logo: text("logo"),
+    createdAt: timestamp("created_at").notNull(),
+    metadata: text("metadata"),
+  },
+  (table) => ({
+    // Slug unique per application, including the NULL (admin) scope.
+    slugAppUnique: unique("organizations_slug_app_unique")
+      .on(table.slug, table.applicationId)
+      .nullsNotDistinct(),
+  })
+);
 
 // ============================================================================
 // APPLICATIONS - Scoped to organizations for multi-tenant isolation
@@ -30,6 +45,10 @@ export const applications = pgTable("applications", {
   logo: text("logo"),
   metadata: text("metadata"), // JSON for additional app config
   isActive: boolean("is_active").default(true).notNull(),
+  // May this application's users create and manage organizations?
+  organizationsEnabled: boolean("organizations_enabled")
+    .default(false)
+    .notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -160,6 +179,10 @@ export const accounts = pgTable(
   })
 );
 
+// Verification rows (email tokens, OAuth state) are tenant-scoped by
+// namespacing `identifier` as "<applicationId|admin>:<identifier>" in
+// lib/auth/tenant-adapter.ts, since Better Auth's core verification table
+// cannot be extended with extra fields.
 export const verifications = pgTable("verifications", {
   id: text("id").primaryKey(),
   identifier: text("identifier").notNull(),
@@ -181,6 +204,7 @@ export const jwks = pgTable("jwks", {
 
 export const members = pgTable("members", {
   id: text("id").primaryKey(),
+  applicationId: text("application_id"),
   organizationId: text("organization_id")
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),
@@ -193,6 +217,7 @@ export const members = pgTable("members", {
 
 export const invitations = pgTable("invitations", {
   id: text("id").primaryKey(),
+  applicationId: text("application_id"),
   organizationId: text("organization_id")
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),

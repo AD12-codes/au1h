@@ -16,16 +16,22 @@ import {
 } from "@/db/schema/auth";
 import { redisService } from "@/utils/redis";
 import { AU1H_ADMIN_APP_SLUG } from "./admin";
-import { fetchAppOrigins, resolveApplicationSlugById } from "./app-context";
+import {
+  fetchAppOrigins,
+  isOrganizationsEnabled,
+  resolveApplicationSlugById,
+} from "./app-context";
 import {
   sessionCreateBefore,
+  sessionUpdateAfter,
   userCreateAfter,
   userCreateBefore,
 } from "./database-hooks";
 import { authBeforeHook } from "./hooks-middleware";
 import { skipStateMismatch } from "./plugins";
+import { tenancyPlugin } from "./tenancy-plugin";
 import { withTenantScoping } from "./tenant-adapter";
-import { runWithTenantStore } from "./tenant-context";
+import { getTenantScope, runWithTenantStore } from "./tenant-context";
 import { withTenantScopedSessions } from "./tenant-secondary-storage";
 
 // Initialize Redis connection
@@ -163,6 +169,7 @@ export const auth = betterAuth<BetterAuthOptions>({
   },
 
   plugins: [
+    tenancyPlugin(),
     // Dev-only escape hatch for cross-port localhost OAuth; must be opted into.
     ...(process.env.NODE_ENV !== "production" &&
     process.env.AU1H_SKIP_OAUTH_STATE_CHECK === "true"
@@ -191,7 +198,17 @@ export const auth = betterAuth<BetterAuthOptions>({
     }),
     admin(),
     openAPI(),
-    organization(),
+    organization({
+      // Admin-portal users always get a workspace. Client-application users
+      // may create organizations only if the application opted in.
+      allowUserToCreateOrganization: () => {
+        const scope = getTenantScope();
+        if (!scope || scope.applicationId === null) {
+          return true;
+        }
+        return isOrganizationsEnabled(scope.applicationId);
+      },
+    }),
   ],
 
   hooks: {
@@ -208,6 +225,9 @@ export const auth = betterAuth<BetterAuthOptions>({
     session: {
       create: {
         before: sessionCreateBefore,
+      },
+      update: {
+        after: sessionUpdateAfter,
       },
     },
   },

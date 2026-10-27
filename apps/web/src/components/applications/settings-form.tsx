@@ -131,6 +131,23 @@ export function SettingsForm({
         />
       </div>
 
+      <div className="flex items-center justify-between rounded-md border px-3 py-2">
+        <div>
+          <Label htmlFor="organizationsEnabled">Organizations</Label>
+          <p className="mt-0.5 text-muted-foreground text-xs">
+            Let this application's users create organizations, invite members
+            and switch between them. Organizations are isolated per application.
+          </p>
+        </div>
+        <Switch
+          checked={!!formData.organizationsEnabled}
+          id="organizationsEnabled"
+          onCheckedChange={(checked) =>
+            updateField("organizationsEnabled", checked)
+          }
+        />
+      </div>
+
       <div className="flex justify-end">
         <Button disabled={isLoading} size="sm" type="submit">
           <Save />

@@ -120,3 +120,30 @@ export async function resolveApplicationSlugById(
   slugById.set(applicationId, { slug: app.slug, fetchedAt: Date.now() });
   return app.slug;
 }
+
+/**
+ * Does the application allow its users to create organizations? Cached with
+ * the other per-application lookups and cleared on the same bus topic.
+ */
+const orgsEnabledById = new Map<
+  string,
+  { value: boolean; fetchedAt: number }
+>();
+onCacheInvalidate("applications", () => orgsEnabledById.clear());
+
+export async function isOrganizationsEnabled(
+  applicationId: string
+): Promise<boolean> {
+  const cached = orgsEnabledById.get(applicationId);
+  if (cached && Date.now() - cached.fetchedAt < APP_ORIGINS_CACHE_TTL) {
+    return cached.value;
+  }
+  const [app] = await db
+    .select({ enabled: applications.organizationsEnabled })
+    .from(applications)
+    .where(eq(applications.id, applicationId))
+    .limit(1);
+  const value = app?.enabled ?? false;
+  orgsEnabledById.set(applicationId, { value, fetchedAt: Date.now() });
+  return value;
+}

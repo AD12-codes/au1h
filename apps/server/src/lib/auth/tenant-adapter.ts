@@ -11,7 +11,22 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   "user",
   "session",
   "account",
+  // Organization plugin (admin workspaces live in the NULL scope). Fields are
+  // declared by tenancy-plugin.ts.
+  "organization",
+  "member",
+  "invitation",
 ]);
+
+/**
+ * Verification rows (email tokens, OAuth state) are keyed by `identifier`, an
+ * email or a random state, which collides across applications. The core
+ * table cannot take an extra column, so the tenant is folded into the
+ * identifier instead: "<applicationId|admin>:<identifier>" at rest, plain on
+ * the way out.
+ */
+const NAMESPACED_MODEL = "verification";
+const NAMESPACED_FIELD = "identifier";
 
 /** Logical field name; the Drizzle adapter maps it to `application_id`. */
 const TENANT_FIELD = "applicationId";
@@ -25,6 +40,29 @@ interface ScopedArgs {
 
 function isScoped(model: string): boolean {
   return TENANT_SCOPED_MODELS.has(model);
+}
+
+function namespace(applicationId: string | null): string {
+  return `${applicationId ?? "admin"}:`;
+}
+
+function namespaceWhere(where: Where[] | undefined, prefix: string): Where[] {
+  return (where ?? []).map((w) =>
+    w.field === NAMESPACED_FIELD && typeof w.value === "string"
+      ? { ...w, value: prefix + w.value }
+      : w
+  );
+}
+
+function stripNamespace<T>(row: T, prefix: string): T {
+  if (!row || typeof row !== "object") {
+    return row;
+  }
+  const value = (row as Record<string, unknown>)[NAMESPACED_FIELD];
+  if (typeof value === "string" && value.startsWith(prefix)) {
+    return { ...row, [NAMESPACED_FIELD]: value.slice(prefix.length) };
+  }
+  return row;
 }
 
 /** Drop any caller-supplied tenant predicate; the scope is authoritative. */
@@ -108,6 +146,23 @@ export function withTenantScoping<A extends TransactionAdapter | Adapter>(
       select?: string[];
       forceAllowId?: boolean;
     }): Promise<R> {
+      if (args.model === NAMESPACED_MODEL) {
+        const prefix = namespace(requireTenantScope().applicationId);
+        const data = args.data as Record<string, unknown>;
+        const identifier = data[NAMESPACED_FIELD];
+        return adapter
+          .create<T, R>({
+            ...args,
+            data: {
+              ...data,
+              [NAMESPACED_FIELD]:
+                typeof identifier === "string"
+                  ? prefix + identifier
+                  : identifier,
+            } as unknown as Omit<T, "id">,
+          })
+          .then((row) => stripNamespace(row, prefix));
+      }
       if (!isScoped(args.model)) {
         return adapter.create<T, R>(args);
       }
@@ -123,6 +178,14 @@ export function withTenantScoping<A extends TransactionAdapter | Adapter>(
       where: Where[];
       select?: string[];
     }): Promise<T | null> {
+      if (args.model === NAMESPACED_MODEL) {
+        const prefix = namespace(requireTenantScope().applicationId);
+        const row = await adapter.findOne<T>({
+          ...args,
+          where: namespaceWhere(args.where, prefix),
+        });
+        return row === null ? null : stripNamespace(row, prefix);
+      }
       if (!isScoped(args.model)) {
         return adapter.findOne<T>(args);
       }
@@ -147,6 +210,14 @@ export function withTenantScoping<A extends TransactionAdapter | Adapter>(
     },
 
     async findMany<T>(args: FindManyArgs): Promise<T[]> {
+      if (args.model === NAMESPACED_MODEL) {
+        const prefix = namespace(requireTenantScope().applicationId);
+        const rows = await adapter.findMany<T>({
+          ...args,
+          where: namespaceWhere(args.where, prefix),
+        });
+        return rows.map((row) => stripNamespace(row, prefix));
+      }
       if (!isScoped(args.model)) {
         return adapter.findMany<T>(args);
       }
@@ -164,6 +235,13 @@ export function withTenantScoping<A extends TransactionAdapter | Adapter>(
     },
 
     async count(args: ScopedArgs): Promise<number> {
+      if (args.model === NAMESPACED_MODEL) {
+        const prefix = namespace(requireTenantScope().applicationId);
+        return adapter.count({
+          ...args,
+          where: namespaceWhere(args.where, prefix),
+        });
+      }
       if (!isScoped(args.model)) {
         return adapter.count(args);
       }
@@ -182,6 +260,14 @@ export function withTenantScoping<A extends TransactionAdapter | Adapter>(
       where: Where[];
       update: Record<string, unknown>;
     }): Promise<T | null> {
+      if (args.model === NAMESPACED_MODEL) {
+        const prefix = namespace(requireTenantScope().applicationId);
+        const row = await adapter.update<T>({
+          ...args,
+          where: namespaceWhere(args.where, prefix),
+        });
+        return row === null ? null : stripNamespace(row, prefix);
+      }
       if (!isScoped(args.model)) {
         return adapter.update<T>(args);
       }
@@ -212,6 +298,13 @@ export function withTenantScoping<A extends TransactionAdapter | Adapter>(
       where: Where[];
       update: Record<string, unknown>;
     }): Promise<number> {
+      if (args.model === NAMESPACED_MODEL) {
+        const prefix = namespace(requireTenantScope().applicationId);
+        return adapter.updateMany({
+          ...args,
+          where: namespaceWhere(args.where, prefix),
+        });
+      }
       if (!isScoped(args.model)) {
         return adapter.updateMany(args);
       }
@@ -237,6 +330,13 @@ export function withTenantScoping<A extends TransactionAdapter | Adapter>(
     },
 
     async delete<T>(args: { model: string; where: Where[] }): Promise<void> {
+      if (args.model === NAMESPACED_MODEL) {
+        const prefix = namespace(requireTenantScope().applicationId);
+        return adapter.delete<T>({
+          ...args,
+          where: namespaceWhere(args.where, prefix),
+        });
+      }
       if (!isScoped(args.model)) {
         return adapter.delete<T>(args);
       }
@@ -258,6 +358,15 @@ export function withTenantScoping<A extends TransactionAdapter | Adapter>(
     },
 
     async deleteMany(args: { model: string; where: Where[] }): Promise<number> {
+      if (args.model === NAMESPACED_MODEL) {
+        // Expiry sweeps (`expiresAt < now`) carry no identifier and clean up
+        // every tenant's stale rows, which is harmless.
+        const prefix = namespace(requireTenantScope().applicationId);
+        return adapter.deleteMany({
+          ...args,
+          where: namespaceWhere(args.where, prefix),
+        });
+      }
       if (!isScoped(args.model)) {
         return adapter.deleteMany(args);
       }

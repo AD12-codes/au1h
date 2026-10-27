@@ -31,6 +31,7 @@ const createAppSchema = z.object({
 
 const updateAppSchema = createAppSchema.partial().extend({
   isActive: z.boolean().optional(),
+  organizationsEnabled: z.boolean().optional(),
 });
 
 export async function list(c: Context<AdminEnv>) {

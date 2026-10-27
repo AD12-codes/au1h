@@ -46,6 +46,8 @@ async function hasPendingInvitation(email: string): Promise<boolean> {
     .where(
       and(
         sql`lower(${invitations.email}) = ${email.toLowerCase()}`,
+        // Only admin-workspace invitations grant admin-portal sign-up.
+        isNull(invitations.applicationId),
         eq(invitations.status, "pending"),
         gt(invitations.expiresAt, new Date())
       )

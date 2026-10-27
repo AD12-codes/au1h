@@ -61,6 +61,12 @@ organization  (workspace, owns applications — Better Auth `organization` plugi
         └── application_routes  (proxy config: path_pattern → backend_url)
 ```
 
+Organizations exist at both levels. In the admin scope an organization is a **workspace**
+that owns applications. Inside a client application (when the application has
+`organizations_enabled`), its users can create organizations, invite members and switch
+between them; those rows carry `application_id` and are invisible to every other
+application. The same slug can exist once per application.
+
 `application_id IS NULL` is the sentinel for **au1h's own admin portal users**. The admin
 portal is an explicit tenant: it sends the reserved slug `x-app-id: au1h-admin`
 (`AU1H_ADMIN_APP_SLUG`), which no client application may register. Admin users are scoped
@@ -95,11 +101,16 @@ Schema: <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/db/schem
    - records `{ applicationId }` in the tenant store via `setTenantScope()`. Nothing on
      the shared Better Auth context is mutated.
      <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/hooks-middleware.ts" />
-5. Better Auth executes the endpoint. Every adapter call it makes for `user`, `session` or
-   `account` goes through the **tenant-scoped adapter**, which reads the store and adds
-   `application_id = $tenant` to reads and writes, stamps it on creates, and throws if no
-   tenant has been resolved. Other models pass through untouched. Sessions served from the
-   Redis cache get the same check in `tenant-secondary-storage.ts`.
+5. Better Auth executes the endpoint. Every adapter call it makes for `user`, `session`,
+   `account`, `organization`, `member` or `invitation` goes through the **tenant-scoped
+   adapter**, which reads the store and adds `application_id = $tenant` to reads and
+   writes, stamps it on creates, and throws if no tenant has been resolved. The
+   `verification` table (email tokens, OAuth state) cannot take an extra column, so its
+   `identifier` is namespaced as `<applicationId|admin>:<identifier>` at rest and
+   stripped on the way out. Other models (`jwks`, `rateLimit`) pass through untouched.
+   Sessions served from the Redis cache get the same check in `tenant-secondary-storage.ts`.
+   `tenancy-plugin.ts` declares the `applicationId` field on the organization tables so
+   Better Auth's field mapper accepts it.
    <ref_file file="/Users/AD12-codes/projects/au1h/apps/server/src/lib/auth/tenant-adapter.ts" />
 6. `databaseHooks`: `user.create.before` rejects admin-portal sign-ups that are not
    allowlisted/invited/bootstrap (email and OAuth alike); `user.create.after` creates the
@@ -158,8 +169,9 @@ For product backends, authenticated with the **application secret**
 `/proxy/*`, `/api/v1/*` and `/api/apps/*` sit behind a Redis fixed-window limiter keyed by
 client IP (plus app slug where relevant); `x-forwarded-for` is trusted only with
 `AU1H_TRUST_PROXY=true`. Better Auth's own limiter covers `/api/auth/*` and uses Redis as
-its store. The in-process read caches (application origins, id→slug, proxy routes) are
-cleared on every instance through a Redis pub/sub bus (`utils/cache-bus.ts`).
+its store.
+
+Optionally (`AU1H_FAIR_SHARE_URL`), `/api/auth/*` and `/proxy/*` also pass through
 
 ---
 
@@ -223,6 +235,14 @@ the tenant read from request-scoped storage.
 - The seven hand-written `internalAdapter` overrides (`internal-adapters.ts`) are gone,
   along with their duplicated `crypto.randomUUID()` + `db.insert()` logic, the
   `accountToInsert` log line (§5.7), and the debug full-table scan in `findOAuthUser`.
+- Organization tables are scoped the same way (2026-10-27): `organizations`, `members`
+  and `invitations` carry `application_id` (migration `0004`), org slugs are unique per
+  application (`NULLS NOT DISTINCT`), and `allowUserToCreateOrganization` is gated on the
+  application's `organizations_enabled` flag. An application's invitation never grants
+  admin-portal sign-up (`admin.ts` only honours invitations in the NULL scope). A
+  `session.update.after` hook keeps the Redis session cache in sync, because Better Auth
+  only rewrites the cache on endpoints that re-set the cookie and `organization/create`
+  (which sets the new org active) is not one of them.
 - `lib/auth/tenant-secondary-storage.ts` — the same check for the Redis session cache.
   `findSession` reads `secondaryStorage.get(token)` *before* the database, so the adapter
   alone would not stop a session cookie issued for app A from being accepted on a request
@@ -423,11 +443,13 @@ page and all four `examples/` verify `aud` and read `applicationId` (never `app_
 
 Things that would make au1h genuinely more attractive than "just add Better Auth":
 
-- **A client SDK** (`@au1h/client`) that wraps `createAuthClient` with the app slug and
-  proxy base URL preconfigured — right now every integrator hand-copies the snippets in
-  `docs/INTEGRATION.md`.
-- **Backend middleware packages** for Express/Hono/FastAPI/Go that verify the JWT
-  (including `aud`) or the trusted headers, so integrators write zero auth code.
+- ~~**A client SDK** (`@au1h/client`)~~ — done (2026-10-27): `packages/client`, with a
+  `/react` entry.
+- ~~**Backend middleware packages**~~ — done: `@au1h/server` (Hono, Express), and Go and
+  Python packages under `packages/`. Rust remains an example only.
+- **Admin personal access tokens**, so scripts and the planned `au1h` CLI can call
+  `/api/v1` without a browser session; then the CLI itself (`au1h apps create --init`,
+  `au1h init` scaffolding against the SDK) and a CLI section in `apps/docs`.
 - **Hosted login pages** per application (branded with `applications.logo`), so a product
   doesn't even need to build a login form — redirect to au1h and come back.
 - **Per-application config** currently hardcoded globally: enabled providers, session TTL,

@@ -14,6 +14,7 @@ export interface ApplicationWithStats {
   logo: string | null;
   metadata: string | null;
   isActive: boolean;
+  organizationsEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
   userCount: number;
@@ -38,6 +39,7 @@ export interface UpdateApplicationInput {
   logo?: string | null;
   metadata?: string;
   isActive?: boolean;
+  organizationsEnabled?: boolean;
 }
 
 /**
@@ -58,6 +60,7 @@ export async function listApplications(
       logo: applications.logo,
       metadata: applications.metadata,
       isActive: applications.isActive,
+      organizationsEnabled: applications.organizationsEnabled,
       createdAt: applications.createdAt,
       updatedAt: applications.updatedAt,
     })
@@ -209,8 +212,9 @@ export async function updateApplication(
     )
     .returning();
 
-  // Invalidate CORS cache if origins or active status changed
-  if (input.allowedOrigins !== undefined || input.isActive !== undefined) {
+  // Origins, active state and the organizations flag are all served from the
+  // per-application caches; clear them on every instance.
+  if (updated) {
     invalidateOriginsCache();
   }
 
