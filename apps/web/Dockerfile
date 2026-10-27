@@ -3,12 +3,15 @@
 # Run with AU1H_SERVER_URL=https://api.example.com; it is written to /config.js at start.
 FROM oven/bun:1.2 AS build
 WORKDIR /repo
+# Every workspace manifest the lockfile knows about must be present, or a
+# frozen install fails. Keep this list in sync with the root `workspaces`.
 COPY package.json bun.lock bunfig.toml ./
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY apps/docs/package.json apps/docs/
 COPY packages/client/package.json packages/client/
 COPY packages/server/package.json packages/server/
+COPY packages/cli/package.json packages/cli/
 COPY examples/typescript/package.json examples/typescript/
 RUN bun install --frozen-lockfile --filter web
 COPY apps/web ./apps/web
