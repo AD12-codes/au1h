@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export interface Config {
-  /** au1h server URL, e.g. https://api.au1h.dev */
+  /** au1h server URL, e.g. https://auth.example.com */
   url: string;
   /** Personal access token (au1h_pat_…) */
   token: string;
