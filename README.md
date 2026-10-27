@@ -1,10 +1,7 @@
-```
-                    _
-  __ _  _   _  _   | |__
- / _` || | | |/ |  | '_ \
-| (_| || |_| || |  | | | |
- \__,_| \__,_||_|  |_| |_|
-```
+<p align="center">
+  <img src="assets/app-icon.svg" width="96" alt="au1h">
+</p>
+<h1 align="center">au1h</h1>
 
 <p align="center">
   <a href="https://github.com/AD12-codes/au1h/actions/workflows/ci.yml"><img src="https://github.com/AD12-codes/au1h/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
