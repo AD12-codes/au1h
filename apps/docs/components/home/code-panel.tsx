@@ -56,7 +56,7 @@ export function CodePanel() {
   const snippet = SNIPPETS.find((x) => x.id === lang) ?? SNIPPETS[0];
 
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className="flex flex-col">
       <div className="overflow-hidden rounded-lg border border-fd-border bg-fd-card">
         <div role="tablist" aria-label="Language" className="flex overflow-x-auto border-b border-fd-border px-2 [scrollbar-width:none]">
           {SNIPPETS.map((x) => {
@@ -85,7 +85,7 @@ export function CodePanel() {
         </div>
         <pre
           role="tabpanel"
-          className="m-0 min-h-40 overflow-x-auto px-5 pb-5 pt-1 font-mono text-[13px] leading-[1.75] text-fd-foreground"
+          className="m-0 h-[286px] overflow-auto px-5 pb-5 pt-1 font-mono text-[13px] leading-[1.75] text-fd-foreground"
         >
           {snippet.lines.map((line, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static snippet lines
@@ -102,12 +102,6 @@ export function CodePanel() {
           ))}
         </pre>
       </div>
-      <p className="m-0 text-[12.5px] leading-[1.7] text-fd-muted-foreground">
-        Client: <code className="font-mono text-[12px]">npm i @au1h/client</code> · Server:{' '}
-        <code className="font-mono text-[12px]">npm i @au1h/server</code> · Go:{' '}
-        <code className="break-all font-mono text-[12px]">go get github.com/AD12-codes/au1h/packages/go</code> · Python:{' '}
-        <code className="font-mono text-[12px]">pip install au1h</code>
-      </p>
     </div>
   );
 }

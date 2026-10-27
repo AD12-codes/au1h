@@ -85,8 +85,8 @@ html > body[data-scroll-locked] {
     radial-gradient(ellipse 55% 60% at 74% 42%, var(--color-au-glow), transparent 70%),
     radial-gradient(circle, var(--color-au-dot) 1px, transparent 1.3px);
   background-size: 100% 100%, 22px 22px;
-  -webkit-mask-image: linear-gradient(to bottom, #000 50%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 50%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 45%, #000 55%, transparent 100%);
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 45%, #000 55%, transparent 100%);
 }
 .au-kw { color: var(--color-au-kw); }
 .au-str { color: var(--color-au-str); }
