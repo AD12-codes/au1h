@@ -17,6 +17,7 @@ export const auth = createAu1hClient({
 
 await auth.signUp.email({ email, password, name });
 await auth.signIn.email({ email, password });
+await auth.signIn.magicLink({ email, callbackURL: "/" }); // magic link + email OTP built in
 
 const token = await auth.getToken();                        // fresh JWT, cached
 const res = await auth.authFetch("https://api.my-app.com/me"); // Authorization: Bearer
