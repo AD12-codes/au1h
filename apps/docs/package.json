@@ -6,8 +6,6 @@
     "build": "next build",
     "dev": "next dev --port 4446",
     "start": "serve out",
-    "lint": "biome check",
-    "format": "biome format --write",
     "check-types": "next typegen && tsc --noEmit"
   },
   "dependencies": {
@@ -29,7 +27,6 @@
     "postcss": "^8.5.31",
     "serve": "^14.2.6",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2",
-    "@biomejs/biome": "^2.6.2"
+    "typescript": "^7.0.2"
   }
 }

@@ -21,14 +21,12 @@
       "!**/wrangler.jsonc",
       "!**/.source",
       "!**/node_modules",
-      "!apps/docs/**",
-      "!**/out"
+      "!**/out",
+      "!apps/docs",
+      "!**/*.html"
     ]
   },
-  "extends": [
-    "ultracite/core",
-    "ultracite/react"
-  ],
+  "extends": ["ultracite/core", "ultracite/react"],
   "linter": {
     "rules": {
       "style": {
@@ -42,9 +40,7 @@
   },
   "overrides": [
     {
-      "includes": [
-        "packages/**"
-      ],
+      "includes": ["packages/**"],
       "linter": {
         "rules": {
           "performance": {
