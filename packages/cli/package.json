@@ -4,12 +4,25 @@
   "description": "Command-line interface for au1h: register applications, manage proxy routes and scaffold the SDK into your project.",
   "license": "MIT",
   "type": "module",
-  "bin": { "au1h": "./dist/index.mjs" },
-  "files": ["dist", "README.md"],
-  "engines": { "node": ">=20" },
-  "repository": { "type": "git", "url": "git+https://github.com/AD12-codes/au1h.git", "directory": "packages/cli" },
+  "bin": {
+    "au1h": "./dist/index.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AD12-codes/au1h.git",
+    "directory": "packages/cli"
+  },
   "homepage": "https://github.com/AD12-codes/au1h",
-  "publishConfig": { "access": "public" },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
     "check-types": "tsc --noEmit -p .",
