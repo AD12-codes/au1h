@@ -1,0 +1,63 @@
+---
+title: Python
+description: Verify au1h tokens with PyJWT, with FastAPI dependencies included.
+---
+
+```bash
+pip install "au1h[fastapi]"
+```
+
+## FastAPI
+
+```python
+from fastapi import Depends, FastAPI
+from au1h import User, Verifier
+from au1h.fastapi import require_user, require_proxy
+
+au1h = Verifier("https://auth.example.com", "todo")
+current_user = require_user(au1h)
+
+app = FastAPI()
+
+@app.get("/api/me")
+def me(user: User = Depends(current_user)):
+    return user                     # id, email, name, application_id
+```
+
+Failures raise `HTTPException` with `detail={"error": ..., "code": ...}` and status `401`,
+or `403` for another application's token.
+
+Behind the gateway:
+
+```python
+proxied = require_proxy(au1h)       # verifies x-au1h-token; pass None to skip
+
+@app.get("/todos")
+def todos(ctx = Depends(proxied)):
+    return {"user": ctx.user.id, "app": ctx.app_slug}
+```
+
+## Any framework
+
+```python
+from au1h import Verifier, AuthError, read_proxy_context
+
+claims = au1h.verify(token)                               # dict of claims
+claims = au1h.verify_authorization(headers.get("authorization"))
+user = au1h.user(token)                                   # User dataclass
+ctx = read_proxy_context(headers)                         # ProxyContext | None
+```
+
+`AuthError` has `.status` and `.code`.
+
+## Server-to-server
+
+```python
+from au1h import ServerClient
+
+s2s = ServerClient("https://auth.example.com", "todo", os.environ["AU1H_APP_SECRET"])
+s2s.me()                       # {"id": ..., "slug": ...}
+s2s.introspect(token)          # Introspection(active, via, user, expires_at)
+```
+
+Full example: `examples/python` in the repository.

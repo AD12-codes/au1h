@@ -1,0 +1,62 @@
+---
+title: Gateway (proxy)
+description: Let au1h authenticate requests and forward them to your backend with trusted headers.
+---
+
+With the gateway pattern your frontend never handles a JWT. It calls au1h, au1h checks
+the session, and forwards the request to your backend with the user's identity in headers.
+
+```
+Browser ──▶ au1h /proxy/todos ──▶ http://todo-api:8080/todos
+            (session or JWT,          x-user-id, x-user-email,
+             app must match)          x-app-id, x-app-slug, x-au1h-token
+```
+
+## Configure a route
+
+On the application page in the admin portal, **Proxy routes → Add route**:
+
+| Field        | Example                 | Notes                                             |
+| ------------ | ----------------------- | ------------------------------------------------- |
+| Path pattern | `/todos/*` or `/todos/:id` | Matched against the path after `/proxy`        |
+| Backend URL  | `http://todo-api:8080`  | `http(s)` only, no credentials. In production, private and loopback addresses are refused unless `AU1H_PROXY_ALLOW_PRIVATE_BACKENDS=true` |
+| Methods      | `GET, POST`             |                                                   |
+| Strip prefix | on                      | Forward only the part after the matched prefix    |
+
+## Call it
+
+```ts
+// with @au1h/client
+const res = await auth.proxyFetch("/todos", { method: "POST", body: JSON.stringify(todo) });
+```
+
+Or plain `fetch` to `${AU1H_URL}/proxy/todos` with `credentials: "include"` and the
+`x-app-id` header.
+
+## What the backend receives
+
+au1h strips any client-supplied `x-user-*` / `x-app-*` headers and injects:
+
+| Header         | Value                                                                 |
+| -------------- | --------------------------------------------------------------------- |
+| `x-user-id`    | The authenticated user's id                                           |
+| `x-user-email` | Their email                                                           |
+| `x-app-id`     | The application's id                                                  |
+| `x-app-slug`   | The application's slug                                                |
+| `x-au1h-token` | A 60-second JWT signed by au1h with `aud` = your slug and `sub` = the user |
+
+Requests are forwarded **only** if the caller presented a valid session cookie or JWT that
+belongs to the route's application. Anonymous calls get 401; another app's credentials get
+403.
+
+## Trusting the headers
+
+The headers are trustworthy if the request can only have come from au1h. Either keep your
+backend on a private network reachable only by au1h, or verify `x-au1h-token` against the
+JWKS. The SDKs provide `requireAu1hProxy(verifier)` for exactly this.
+
+## Limits
+
+Streaming request bodies are supported. The backend call times out after
+`AU1H_PROXY_TIMEOUT_MS` (default 30 s) with a 504. Backend `Set-Cookie` headers are passed
+through unchanged.

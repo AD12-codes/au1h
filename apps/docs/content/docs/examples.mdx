@@ -1,0 +1,39 @@
+---
+title: Examples
+description: Four tiny backends, one per language, all authenticating against one au1h.
+---
+
+The repository ships four minimal backends in `examples/`. Each serves a demo page and a
+protected `GET /api/me` that verifies the au1h JWT and returns the signed-in user.
+
+| Language   | Folder        | Stack                        | Port | Slug                 |
+| ---------- | ------------- | ---------------------------- | ---- | -------------------- |
+| Go         | `go/`         | net/http + the Go SDK        | 8081 | `example-go`         |
+| Rust       | `rust/`       | axum + jsonwebtoken          | 8082 | `example-rust`       |
+| Python     | `python/`     | FastAPI + the Python SDK     | 8083 | `example-python`     |
+| TypeScript | `typescript/` | Bun + Hono + `@au1h/server`  | 8084 | `example-typescript` |
+
+## The demo
+
+Sign in with **the same email in all four apps**. Each app shows a different user id and
+application id, because au1h scopes identity per application. Copy one app's token to
+another app's backend and it is rejected: the token's `aud` is the wrong slug.
+
+## Run
+
+1. Register the four applications in the admin portal with the slugs above and allowed
+   origin `http://localhost:<port>`.
+2. Start each backend in its own terminal:
+
+```bash
+cd examples/go         && go run .
+cd examples/rust       && cargo run
+cd examples/python     && uv run main.py
+cd examples/typescript && bun run dev
+```
+
+3. Open `http://localhost:8081` … `8084` and sign up.
+
+Each backend reads `PORT`, `AU1H_URL` and `AU1H_APP_SLUG` from the environment; the
+defaults match the table. `examples/README.md` has the full walkthrough and the things to
+expect when all four run on one machine.

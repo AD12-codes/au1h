@@ -1,0 +1,46 @@
+---
+title: Server-to-server API
+description: Endpoints your backend calls with the application secret.
+---
+
+Authenticate with two headers:
+
+```
+x-app-id: <slug>
+x-app-secret: au1h_sk_…
+```
+
+The secret is shown once when the application is created or its secret is regenerated.
+Only a hash is stored. Keep it server-side.
+
+## `GET /api/apps/me`
+
+Confirms the credentials.
+
+```json
+{ "application": { "id": "…", "slug": "todo" } }
+```
+
+## `POST /api/apps/introspect`
+
+```json
+{ "token": "<au1h JWT or raw session token>" }
+```
+
+Returns `200` always; `active` tells you the answer, so the endpoint does not leak which
+check failed.
+
+```json
+{
+  "active": true,
+  "via": "jwt",
+  "user": { "id": "…", "email": "john@example.com", "name": "John" },
+  "expiresAt": 1788629508
+}
+```
+
+- A JWT is verified offline and must have been minted for your application.
+- A raw session token is looked up in your application's tenant: sign-out, revocation and
+  bans take effect immediately.
+
+Errors: `401` for missing or wrong credentials, `429` when rate-limited.

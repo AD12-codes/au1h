@@ -1,0 +1,75 @@
+---
+title: Quickstart
+description: Sign a user in from the browser and verify them on your backend, in TypeScript.
+---
+
+This walks through the **Direct JWT** pattern end to end with the SDKs. You need a running
+au1h and a registered application (slug `todo` below).
+
+## 1. Browser: sign in and get a token
+
+```bash
+npm i @au1h/client better-auth
+```
+
+```ts title="lib/auth.ts"
+import { createAu1hClient } from "@au1h/client"; // or "@au1h/client/react" for hooks
+
+export const auth = createAu1hClient({
+  baseURL: "http://localhost:4444",
+  appSlug: "todo",
+});
+```
+
+```ts
+await auth.signUp.email({ email, password, name });
+await auth.signIn.email({ email, password });
+
+// A JWT for your backend. Cached, refreshed automatically before it expires.
+const token = await auth.getToken();
+
+// Or let the client add the Authorization header for you:
+const res = await auth.authFetch("http://localhost:8080/api/me");
+```
+
+Everything from Better Auth's client is there too (`auth.useSession()` on the React entry,
+`auth.signIn.social({ provider: "github" })`, and so on). Every request carries
+`x-app-id: todo`.
+
+## 2. Backend: verify the token
+
+```bash
+npm i @au1h/server hono
+```
+
+```ts title="server.ts"
+import { createVerifier } from "@au1h/server";
+import { type Au1hEnv, requireAu1hUser } from "@au1h/server/hono";
+import { Hono } from "hono";
+
+const au1h = createVerifier({ au1hUrl: "http://localhost:4444", appSlug: "todo" });
+const app = new Hono<Au1hEnv>();
+
+app.use("/api/*", requireAu1hUser(au1h));
+app.get("/api/me", (c) => c.json(c.get("au1hUser")));
+
+export default app;
+```
+
+`requireAu1hUser` checks the EdDSA signature against au1h's JWKS, the expiry, `iss` = au1h
+and `aud` = `todo`. A token minted for another application gets a 403.
+
+There is an Express variant at `@au1h/server/express`, and equivalent packages for
+[Go](/docs/sdks/go) and [Python](/docs/sdks/python).
+
+## 3. Try the isolation guarantee
+
+Register a second application (`books`), point another copy of the frontend at it, and sign
+up with the **same email**. You get a different user id, and the `todo` backend rejects the
+`books` token. That is the whole point of au1h.
+
+## Where next
+
+- [Tokens](/docs/concepts/tokens): claims, lifetime, JWKS.
+- [Gateway](/docs/concepts/gateway): skip JWTs entirely and read trusted headers.
+- [Organizations](/docs/concepts/organizations): teams inside your application.

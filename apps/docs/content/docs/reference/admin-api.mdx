@@ -1,0 +1,54 @@
+---
+title: Admin API
+description: What the admin portal uses, available to scripts with an admin session.
+---
+
+All routes under `/api/v1` except `/health` require an **admin-portal session** (sign in
+with `x-app-id: au1h-admin`) with an active workspace, and are scoped to that workspace.
+Unauthenticated calls get `401`; a client-application session also gets `401`.
+
+<Callout type="info">
+  Personal access tokens for scripts and the `au1h` CLI are planned. Today the only
+  credential is the session cookie.
+</Callout>
+
+## Applications
+
+| Endpoint                                   | Method | Body / notes                                    |
+| ------------------------------------------ | ------ | ----------------------------------------------- |
+| `/api/v1/applications`                     | GET    | List with user and session counts              |
+| `/api/v1/applications/:id`                 | GET    |                                                  |
+| `/api/v1/applications`                     | POST   | `{ name, slug, allowedOrigins?, redirectUris?, logo? }` → `{ application, secret }` |
+| `/api/v1/applications/:id`                 | PUT    | Same fields plus `isActive`, `organizationsEnabled` |
+| `/api/v1/applications/:id`                 | DELETE |                                                  |
+| `/api/v1/applications/:id/regenerate-secret` | POST | `{ secret }`, shown once                        |
+
+`slug` is lowercase letters, digits and hyphens; `au1h-admin` is reserved.
+`allowedOrigins` and `redirectUris` are comma-separated strings.
+
+## Users
+
+Users of your workspace's applications, plus your workspace's own members.
+
+| Endpoint                                | Method | Notes                                    |
+| --------------------------------------- | ------ | ---------------------------------------- |
+| `/api/v1/users?applicationId=&search=&page=&limit=` | GET | Paginated                       |
+| `/api/v1/users/:id`                     | GET    |                                          |
+| `/api/v1/users/:id/sessions`            | GET    |                                          |
+| `/api/v1/users/:id/ban`                 | POST   | `{ reason?, expiresAt? }`; revokes sessions |
+| `/api/v1/users/:id/unban`               | POST   |                                          |
+| `/api/v1/users/:id/sessions`            | DELETE | Revoke all                               |
+| `/api/v1/users/sessions/:sessionId`     | DELETE | Revoke one                               |
+
+## Proxy routes
+
+| Endpoint                     | Method | Body                                                        |
+| ---------------------------- | ------ | ----------------------------------------------------------- |
+| `/api/v1/routes?applicationId=` | GET |                                                             |
+| `/api/v1/routes`             | POST   | `{ applicationId, name, pathPattern, backendUrl, methods, stripPrefix? }` |
+| `/api/v1/routes/:id`         | PUT    | Any of the above plus `isActive`                            |
+| `/api/v1/routes/:id/toggle`  | PATCH  | `{ isActive }`                                              |
+| `/api/v1/routes/:id`         | DELETE |                                                             |
+
+The application must belong to your workspace. `backendUrl` must be `http(s)` without
+credentials; private and loopback targets are refused in production.

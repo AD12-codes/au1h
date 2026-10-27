@@ -1,0 +1,56 @@
+---
+title: Go
+description: Verify au1h tokens and read gateway headers with net/http middleware.
+---
+
+```bash
+go get github.com/AD12-codes/au1h/packages/go
+```
+
+## Verifier and middleware
+
+```go
+import au1h "github.com/AD12-codes/au1h/packages/go"
+
+v, err := au1h.NewVerifier(ctx, au1h.Options{
+    URL:     "https://auth.example.com",
+    AppSlug: "todo",
+})
+
+mux := http.NewServeMux()
+mux.Handle("GET /api/me", v.RequireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    user, _ := au1h.UserFromContext(r.Context())   // *au1h.User{ID, Email, Name, ApplicationID}
+    json.NewEncoder(w).Encode(user)
+})))
+```
+
+`RequireUser` answers `401` (`{"error","code"}`) for a missing or invalid bearer token and
+`403` for another application's token. Keys come from au1h's JWKS, cached and refreshed at
+most every 15 minutes (`Options.JWKSRefresh`).
+
+Verify manually:
+
+```go
+tok, user, err := v.Verify(ctx, raw)
+tok, user, err := v.VerifyAuthorization(ctx, r.Header.Get("Authorization"))
+```
+
+## Behind the gateway
+
+```go
+mux.Handle("/", v.RequireProxy(true, handler))   // true: verify x-au1h-token
+
+p, _ := au1h.ProxyFromContext(r.Context())        // p.User, p.AppID, p.AppSlug
+```
+
+`au1h.ReadProxyContext(r.Header)` reads the headers without middleware.
+
+## Server-to-server
+
+```go
+c := au1h.NewServerClient("https://auth.example.com", "todo", os.Getenv("AU1H_APP_SECRET"))
+id, slug, err := c.Me(ctx)
+res, err := c.Introspect(ctx, token)   // res.Active, res.User, res.ExpiresAt
+```
+
+Full example: `examples/go` in the repository.

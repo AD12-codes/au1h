@@ -1,0 +1,74 @@
+---
+title: Installation
+description: Run au1h locally with Bun, Postgres and Redis.
+---
+
+## Prerequisites
+
+- [Bun](https://bun.sh) 1.2 or newer
+- PostgreSQL 15 or newer (the schema uses `UNIQUE NULLS NOT DISTINCT`)
+- Redis 6 or newer
+
+## Clone and configure
+
+```bash
+git clone https://github.com/AD12-codes/au1h
+cd au1h
+bun install
+
+cp apps/server/.env.example apps/server/.env
+cp apps/web/.env.example apps/web/.env
+```
+
+Edit `apps/server/.env`. The values you must set:
+
+| Variable             | What                                                                 |
+| -------------------- | -------------------------------------------------------------------- |
+| `DATABASE_URL`       | Postgres connection string                                           |
+| `REDIS_URL`          | Redis connection string                                              |
+| `BETTER_AUTH_SECRET` | A long random string. Signs cookies and encrypts the JWT private key |
+| `BETTER_AUTH_URL`    | The public URL of the server, e.g. `http://localhost:4444`           |
+| `CORS_ORIGIN`        | The admin portal's origin, e.g. `http://localhost:4445`              |
+
+Everything else has a sensible default; see [Configuration](/docs/reference/configuration).
+
+## Apply the schema
+
+```bash
+cd apps/server
+bun run db:migrate
+```
+
+## Start
+
+```bash
+bun run dev
+```
+
+| Service      | URL                     |
+| ------------ | ----------------------- |
+| au1h server  | `http://localhost:4444` |
+| Admin portal | `http://localhost:4445` |
+
+Check it is up:
+
+```bash
+curl http://localhost:4444/api/v1/health
+```
+
+## Create the first admin
+
+Open `http://localhost:4445/register`. **The very first sign-up is allowed** and becomes
+an admin with its own workspace. After that, admin sign-up is closed unless the email is in
+`AU1H_ADMIN_EMAILS` or has a pending workspace invitation.
+
+<Callout type="info">
+  Admin accounts are separate from your applications' users. `john@example.com` can be an
+  au1h admin and, independently, a user of each application.
+</Callout>
+
+## Optional: GitHub and Google sign-in
+
+Set `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` and `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET`. Each provider is enabled when both of its values are present.
+The OAuth callback URL is `${BETTER_AUTH_URL}/api/auth/callback/github` (or `google`).

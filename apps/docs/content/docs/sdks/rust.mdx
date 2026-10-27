@@ -1,0 +1,44 @@
+---
+title: Rust
+description: Verify au1h tokens with jsonwebtoken. No package yet; copy the example.
+---
+
+There is no published crate yet. The repository's `examples/rust` is a complete axum
+backend that does everything the other SDKs do, in about 150 lines, and is the reference
+until a crate exists.
+
+## What to verify
+
+```rust
+use jsonwebtoken::{decode, decode_header, jwk::JwkSet, Algorithm, DecodingKey, Validation};
+
+// 1. fetch https://auth.example.com/api/auth/jwks once; cache the JwkSet; refetch on unknown kid
+// 2. pick the key by the token's `kid`
+let header = decode_header(token)?;
+let jwk = jwks.find(&header.kid.unwrap()).ok_or("unknown kid")?;
+let key = DecodingKey::from_jwk(jwk)?;
+
+// 3. EdDSA, iss = au1h URL, aud = your slug
+let mut validation = Validation::new(Algorithm::EdDSA);
+validation.set_issuer(&[AU1H_URL]);
+validation.set_audience(&["todo"]);
+
+let claims = decode::<Claims>(token, &key, &validation)?.claims;
+```
+
+with
+
+```rust
+#[derive(Deserialize)]
+struct Claims {
+    sub: String,
+    email: String,
+    name: Option<String>,
+    #[serde(rename = "applicationId")]
+    application_id: Option<String>,
+    exp: i64,
+}
+```
+
+Behind the gateway, read `x-user-id`, `x-user-email`, `x-app-slug` and verify
+`x-au1h-token` with the same code.

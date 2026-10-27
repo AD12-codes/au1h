@@ -1,0 +1,83 @@
+---
+title: "@au1h/server (TypeScript)"
+description: Verify au1h JWTs, read gateway headers and call the server-to-server API from Node, Bun or Deno.
+---
+
+```bash
+npm i @au1h/server
+```
+
+## Verifier
+
+```ts
+import { createVerifier } from "@au1h/server";
+
+const au1h = createVerifier({ au1hUrl: "https://auth.example.com", appSlug: "todo" });
+
+const claims = await au1h.verify(jwt);                       // throws Au1hAuthError
+const claims = await au1h.verifyAuthorization(req.headers.get("authorization"));
+const claims = await au1h.verifyProxyToken(req.headers.get("x-au1h-token"));
+```
+
+Checks the EdDSA signature against au1h's JWKS (fetched once, cached, refetched on unknown
+key ids), `exp`, `iss` = au1h and `aud` = your slug. `Au1hAuthError` carries `status`
+(`401`, or `403` for another application's token) and a `code`.
+
+## Hono
+
+```ts
+import { type Au1hEnv, requireAu1hUser, requireAu1hProxy } from "@au1h/server/hono";
+
+const app = new Hono<Au1hEnv>();
+app.use("/api/*", requireAu1hUser(au1h));
+app.get("/api/me", (c) => c.json(c.get("au1hUser")));     // { id, email, name, applicationId }
+```
+
+Behind the gateway:
+
+```ts
+app.use("/*", requireAu1hProxy(au1h));   // reads x-user-*; verifies x-au1h-token
+app.get("/todos", (c) => c.json(c.get("au1hProxy").user));
+```
+
+Pass no verifier to `requireAu1hProxy()` to trust the headers without checking the token
+(only on a private network).
+
+## Express
+
+```ts
+import { requireAu1hUser, requireAu1hProxy } from "@au1h/server/express";
+
+app.use("/api", requireAu1hUser(au1h));
+app.get("/api/me", (req, res) => res.json(req.au1hUser));
+```
+
+## Any framework
+
+```ts
+import { readProxyContext, userFromClaims } from "@au1h/server";
+
+const claims = await au1h.verifyAuthorization(authorizationHeader);
+const user = userFromClaims(claims);
+
+const ctx = readProxyContext(headers);   // { user, appId, appSlug, proxyToken } | null
+```
+
+## Server-to-server
+
+```ts
+import { createServerClient } from "@au1h/server";
+
+const s2s = createServerClient({
+  au1hUrl: "https://auth.example.com",
+  appSlug: "todo",
+  appSecret: process.env.AU1H_APP_SECRET!,   // au1h_sk_…, never in a browser
+});
+
+await s2s.me();                      // { application: { id, slug } }
+await s2s.introspect(tokenOrSessionToken);
+// { active: true, via: "jwt" | "session", user: { id, email, name }, expiresAt }
+```
+
+Introspection reflects sign-out, bans and session revocation immediately, unlike offline
+JWT verification.

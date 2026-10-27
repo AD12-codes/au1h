@@ -1,0 +1,77 @@
+---
+title: "@au1h/client"
+description: Browser SDK, a Better Auth client bound to your application plus JWT and gateway helpers.
+---
+
+```bash
+npm i @au1h/client better-auth
+```
+
+Two entry points with the same API: `@au1h/client` (framework-agnostic) and
+`@au1h/client/react` (adds `useSession` and the other React hooks).
+
+## Create a client
+
+```ts
+import { createAu1hClient } from "@au1h/client/react";
+import { organizationClient } from "better-auth/client/plugins"; // optional
+
+export const auth = createAu1hClient({
+  baseURL: "https://auth.example.com",
+  appSlug: "todo",
+  plugins: [organizationClient()],   // any Better Auth client plugins
+});
+```
+
+| Option                 | Default                                | Notes                                   |
+| ---------------------- | -------------------------------------- | --------------------------------------- |
+| `baseURL`              | required                               | au1h URL, no trailing slash             |
+| `appSlug`              | required                               | Sent as `x-app-id` on every request     |
+| `plugins`              | `[]`                                   | Better Auth client plugins              |
+| `tokenStorage`         | `localStorage` keyed by slug, or memory | Where the JWT is kept between loads    |
+| `refreshLeewaySeconds` | `60`                                   | Refresh the JWT this long before expiry |
+
+## Authentication
+
+Everything Better Auth's client offers, with the app header already set:
+
+```ts
+await auth.signUp.email({ email, password, name });
+await auth.signIn.email({ email, password });
+await auth.signIn.social({ provider: "github", callbackURL: "/dashboard" });
+const { data: session } = await auth.getSession();
+await auth.signOut();   // also clears the cached JWT
+```
+
+```tsx
+function Profile() {
+  const { data, isPending } = auth.useSession();
+  if (isPending) return null;
+  return data ? <p>{data.user.email}</p> : <SignIn />;
+}
+```
+
+## Tokens and fetch helpers
+
+```ts
+const token = await auth.getToken();        // valid JWT; cached, refreshed before expiry
+const claims = auth.getClaims();            // decoded (not verified) cached claims, or null
+
+// Call your own backend with Authorization: Bearer <jwt>
+const res = await auth.authFetch("https://api.todo.example.com/me");
+
+// Call through the au1h gateway (session cookie + x-app-id)
+const todos = await auth.proxyFetch("/todos");
+```
+
+`getToken` throws `Au1hError` with `status: 401` when there is no session.
+
+## Without the Better Auth client
+
+The helpers are available on their own:
+
+```ts
+import { createTokenManager } from "@au1h/client";
+const tokens = createTokenManager({ baseURL, appSlug: "todo" });
+await tokens.getToken();
+```

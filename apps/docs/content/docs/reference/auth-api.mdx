@@ -1,0 +1,48 @@
+---
+title: Auth API
+description: The Better Auth endpoints your clients call, all under /api/auth.
+---
+
+All endpoints live under `${AU1H_URL}/api/auth` and, except `/jwks` and `/ok`, require
+`x-app-id: <slug>` (or `au1h-admin` for the admin portal). Without it they return 401
+"Missing application context". Browser clients must send cookies (`credentials: "include"`).
+
+The SDK wraps these; the table is for direct use and other languages.
+
+| Endpoint                     | Method | Purpose                                           |
+| ---------------------------- | ------ | ------------------------------------------------- |
+| `/sign-up/email`             | POST   | `{ email, password, name }` → creates the user in this app and a session |
+| `/sign-in/email`             | POST   | `{ email, password }` → session cookie           |
+| `/sign-in/social`            | POST   | `{ provider: "github" \| "google", callbackURL }` → redirect URL |
+| `/sign-out`                  | POST   | Ends the session                                  |
+| `/get-session`               | GET    | `{ session, user }` or `null`                     |
+| `/token`                     | GET    | `{ token }`: a 15-minute JWT for your backend     |
+| `/jwks`                      | GET    | Public signing keys. No app context needed        |
+| `/organization/*`            | *      | Organization plugin, when enabled for the app     |
+
+Full endpoint documentation is Better Auth's: every endpoint behaves as documented there,
+scoped to the application named by `x-app-id`.
+
+## Example
+
+```bash
+AU1H=http://localhost:4444
+curl -c jar -H 'content-type: application/json' -H 'x-app-id: todo' \
+  -d '{"email":"john@example.com","password":"password123","name":"John"}' \
+  $AU1H/api/auth/sign-up/email
+
+curl -b jar -H 'x-app-id: todo' $AU1H/api/auth/token
+```
+
+## Errors
+
+Errors are `{ "code": "SNAKE_CASE", "message": "..." }` with Better Auth's status codes.
+au1h-specific codes:
+
+| Code                                                   | Meaning                                    |
+| ------------------------------------------------------ | ------------------------------------------ |
+| `UNAUTHORIZED_MISSING_APPLICATION_CONTEXT…`            | No `x-app-id` header                       |
+| `APP_NOT_REGISTERED…`                                  | Unknown slug                               |
+| `APP_IS_INACTIVE…`                                     | Application deactivated in the portal      |
+| `ADMIN_PORTAL_SIGNUP_IS_BY_INVITATION_ONLY…`           | Admin sign-up refused                      |
+| `YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_ORGANIZATION`     | Organizations are off for this application |

@@ -1,0 +1,53 @@
+---
+title: Security model
+description: What au1h protects, how, and what you still need to do.
+---
+
+## Trust boundaries
+
+- **The application slug is public.** It selects the tenant, like an OAuth `client_id`.
+  Knowing a slug lets you sign up or sign in *as a user of that app*, never as another
+  app's user and never as an admin.
+- **The application secret is private.** It authenticates your backend to the
+  server-to-server API. It is stored as a scrypt hash and shown once.
+- **The JWT audience is the slug.** Your backend accepts only tokens minted for it.
+- **The admin portal is a tenant too**, reserved as `au1h-admin`. Admin sign-up is open
+  only for the very first admin, for emails in `AU1H_ADMIN_EMAILS`, or for pending
+  workspace invitations. Nothing is inferred from `Origin` or `Referer`.
+- **The admin API** (`/api/v1/*`) requires an admin session and is scoped to the caller's
+  workspace: applications, users and routes of other workspaces are invisible.
+
+## Isolation
+
+Tenant scoping lives in the database adapter, below Better Auth, and in the Redis session
+cache. Every read, write, update and delete on users, sessions, accounts, organizations,
+members, invitations and verification tokens is confined to the request's application.
+Unit tests cover cross-tenant reads, writes by known id, the admin scope, transactions and
+concurrent interleaved requests.
+
+## Credentials and secrets
+
+- Passwords: Better Auth's scrypt hashing.
+- Application secrets: scrypt-hashed at rest; the plaintext is never retrievable.
+- JWT signing key: Ed25519, generated on first use, private key encrypted with
+  `BETTER_AUTH_SECRET`.
+- Logs redact tokens, passwords, secrets and cookie headers.
+
+## Rate limits
+
+Redis-backed, shared across instances: `/api/v1/*`, `/proxy/*` and `/api/apps/*` by client
+IP (plus app slug where relevant). Better Auth's own limiter protects `/api/auth/*` in
+production. `x-forwarded-for` is honoured only with `AU1H_TRUST_PROXY=true`.
+
+## Proxy targets
+
+Route backends must be `http(s)` without embedded credentials. In production, loopback,
+private and link-local addresses are refused so au1h cannot be used to reach internal
+services. The check is on the literal hostname; DNS rebinding is not detected.
+
+## What you must still do
+
+- Run au1h behind TLS and set `NODE_ENV=production`.
+- Keep backends behind the gateway on a private network, or verify `x-au1h-token`.
+- Treat `AU1H_ADMIN_EMAILS` as the list of people who may administer every application.
+- Report vulnerabilities privately; see `SECURITY.md` in the repository.

@@ -1,0 +1,59 @@
+---
+title: What is au1h
+description: Self-hosted authentication for all of your applications, with per-app isolation and an API gateway.
+---
+
+au1h is **authentication-as-a-service that you run yourself**. One deployment hosts login,
+sessions, OAuth and JWTs for many unrelated products: a todo app, a books manager, an
+internal tool. Each product registers itself once, gets a slug, and starts sending
+`x-app-id: <slug>`. No auth code runs in the product's own server.
+
+## Why not just use Better Auth in every app
+
+au1h is built on [Better Auth](https://better-auth.com), and you could install Better Auth
+in each app directly. You would then maintain per-app auth tables, migrations, OAuth app
+registrations and session config, with no single place to see users across products.
+
+au1h inverts this: Better Auth is installed **exactly once**, here. Products talk to it
+over HTTP and verify what it issues.
+
+## The one hard rule: the same email is a different user in every app
+
+| user id | email            | application |
+| ------- | ---------------- | ----------- |
+| user-1  | john@example.com | admin portal |
+| user-2  | john@example.com | `todo`      |
+| user-3  | john@example.com | `books`     |
+
+Three independent identities: separate passwords, OAuth links, sessions, organizations
+and bans. au1h enforces this at the database-adapter layer, so every query Better Auth
+makes is confined to one application. See [Tenancy](/docs/concepts/tenancy).
+
+## Two ways to protect a backend
+
+<Cards>
+  <Card title="Direct JWT" href="/docs/concepts/tokens">
+    Your frontend asks au1h for a JWT and sends it to your backend. The backend verifies
+    it against au1h's public JWKS. Works anywhere.
+  </Card>
+  <Card title="Gateway (proxy)" href="/docs/concepts/gateway">
+    Your frontend calls au1h's `/proxy/*`. au1h authenticates the request and forwards it
+    to your backend with trusted `x-user-id` headers.
+  </Card>
+</Cards>
+
+## What you get
+
+- Email + password, GitHub and Google sign-in, with per-application isolation.
+- Organizations inside each application (invite members, switch workspaces).
+- An admin portal to manage applications, users, sessions and proxy routes.
+- SDKs: [`@au1h/client`](/docs/sdks/client), [`@au1h/server`](/docs/sdks/server),
+  [Go](/docs/sdks/go) and [Python](/docs/sdks/python).
+- Redis-backed rate limits, hashed application secrets, a server-to-server token
+  introspection API.
+
+<Cards>
+  <Card title="Run it locally" href="/docs/getting-started/installation" />
+  <Card title="Register your first application" href="/docs/getting-started/first-application" />
+  <Card title="Quickstart (TypeScript)" href="/docs/getting-started/quickstart" />
+</Cards>

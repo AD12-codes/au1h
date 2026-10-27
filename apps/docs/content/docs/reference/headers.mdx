@@ -1,0 +1,41 @@
+---
+title: Headers
+description: Every header au1h reads or writes.
+---
+
+## Sent by clients to au1h
+
+| Header          | Where                     | Purpose                                                      |
+| --------------- | ------------------------- | ------------------------------------------------------------ |
+| `x-app-id`      | `/api/auth/*`, `/proxy/*` | The application slug. Selects the tenant                     |
+| `Authorization: Bearer <jwt>` | `/proxy/*`  | Alternative to the session cookie                            |
+| `Cookie`        | everywhere                | Better Auth session cookie                                   |
+
+## Sent by backends to au1h
+
+| Header         | Where         | Purpose                            |
+| -------------- | ------------- | ---------------------------------- |
+| `x-app-id`     | `/api/apps/*` | The application slug               |
+| `x-app-secret` | `/api/apps/*` | The application secret             |
+
+## Injected by the gateway into forwarded requests
+
+| Header              | Value                                                       |
+| ------------------- | ----------------------------------------------------------- |
+| `x-user-id`         | User id                                                     |
+| `x-user-email`      | User email                                                  |
+| `x-app-id`          | Application id                                              |
+| `x-app-slug`        | Application slug                                            |
+| `x-au1h-token`      | 60-second au1h-signed JWT, `aud` = slug, `sub` = user id    |
+| `x-forwarded-host`  | The host the client used                                    |
+| `x-forwarded-proto` | The scheme the client used                                  |
+| `x-forwarded-for`   | Client address                                              |
+
+Any `x-user-*` or `x-app-*` header supplied by the client is stripped before forwarding.
+
+## Response headers
+
+| Header                                              | Where                                 |
+| --------------------------------------------------- | ------------------------------------- |
+| `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After` | Rate-limited routes          |
+| `set-auth-jwt`                                      | `/api/auth/get-session` (Better Auth) |

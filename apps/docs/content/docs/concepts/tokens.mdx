@@ -1,0 +1,55 @@
+---
+title: Tokens
+description: The JWT au1h mints for your backend, and how to verify it.
+---
+
+## Getting a token
+
+A signed-in client calls `GET /api/auth/token` with its session cookie and `x-app-id`.
+The SDK does this for you (`auth.getToken()`), caches the result and refreshes it shortly
+before expiry.
+
+## What is inside
+
+| Claim           | Value                                             |
+| --------------- | ------------------------------------------------- |
+| `sub`           | User id                                           |
+| `email`, `name` | From the user record                              |
+| `applicationId` | The application's id                              |
+| `iss`           | au1h's base URL (`BETTER_AUTH_URL`)               |
+| `aud`           | **Your application slug**                         |
+| `iat`, `exp`    | Issued at, expires. Lifetime is **15 minutes**.   |
+
+Signed with **EdDSA (Ed25519)**. The public keys are at `GET /api/auth/jwks`, which needs
+no `x-app-id` and no authentication.
+
+## Verifying
+
+Always check: signature against the JWKS, `exp`, `iss` = au1h URL, **`aud` = your slug**.
+All applications share one JWKS, so the `aud` check is what stops a token minted for
+another application from being accepted by yours. The SDKs do all four.
+
+<Callout type="warn">
+  There is no `app_id` claim. Older snippets that read `payload.app_id` get `undefined`.
+</Callout>
+
+## Revocation
+
+JWTs are stateless and valid until `exp`. If you need to react to sign-out, bans or
+session revocation within those 15 minutes, call the
+[introspection endpoint](/docs/reference/server-to-server) with your application secret,
+or use the [gateway](/docs/concepts/gateway), which checks the live session on every
+request.
+
+## Manual verification (no SDK)
+
+```ts
+import { createRemoteJWKSet, jwtVerify } from "jose";
+
+const JWKS = createRemoteJWKSet(new URL(`${AU1H_URL}/api/auth/jwks`));
+const { payload } = await jwtVerify(token, JWKS, {
+  algorithms: ["EdDSA"],
+  issuer: AU1H_URL,
+  audience: "todo",
+});
+```

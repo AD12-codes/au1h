@@ -1,0 +1,55 @@
+---
+title: Organizations
+description: Teams and workspaces inside your application, isolated per application.
+---
+
+Turn on **Organizations** for an application (Settings → Organizations) and its users can
+create organizations, invite members, assign roles and switch between organizations. This
+is Better Auth's organization plugin, scoped per application by au1h.
+
+## Model
+
+A person is **one user per application**, and may belong to any number of organizations
+within it. Inviting an existing user adds a membership; it never creates a second account
+and never fails because "the email already exists". `ad@gmail.com` can be an individual
+user and a member of a client's organization at the same time.
+
+Organizations, memberships and invitations are isolated per application. The slug `acme`
+can exist once in every application. An invitation inside your application never grants
+access to the au1h admin portal.
+
+## Client usage
+
+```ts
+import { organizationClient } from "better-auth/client/plugins";
+import { createAu1hClient } from "@au1h/client";
+
+export const auth = createAu1hClient({
+  baseURL: AU1H_URL,
+  appSlug: "todo",
+  plugins: [organizationClient()],
+});
+
+await auth.organization.create({ name: "Acme", slug: "acme" }); // becomes active
+await auth.organization.inviteMember({ email: "ad@gmail.com", role: "member" });
+await auth.organization.setActive({ organizationId });
+const { data } = await auth.getSession();  // data.session.activeOrganizationId
+```
+
+The active organization is stored on the session, so your backend can read it from the
+session (gateway) or request it via introspection. It is not in the JWT.
+
+## Invitations
+
+`inviteMember` creates a pending invitation for an email. When that person is signed in to
+your application with the same email, `acceptInvitation({ invitationId })` adds them. au1h
+does not send the invitation email; your application does, with a link that leads to your
+accept flow.
+
+## Roles
+
+Default roles are `owner`, `admin` and `member`, with Better Auth's default permissions.
+Custom roles and access control follow the Better Auth organization plugin documentation
+and work unchanged.
+
+While Organizations is off for an application, `organization.create` returns 403.

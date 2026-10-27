@@ -1,0 +1,41 @@
+---
+title: Your first application
+description: Register a product in the admin portal and collect the values your code needs.
+---
+
+Every product that uses au1h is an **application**. Registering one gives you a slug and a
+secret, and tells au1h which browser origins may talk to it.
+
+## Register
+
+1. Open the admin portal and go to **Applications → New application**.
+2. Fill in:
+   - **Name**: anything, e.g. *Todo App*.
+   - **Slug**: lowercase letters, digits and hyphens, e.g. `todo`. This is the value your
+     code sends as `x-app-id`, and the `aud` of every JWT au1h mints for the app. It cannot
+     be `au1h-admin`, which is reserved.
+   - **Allowed origins**: comma-separated browser origins, e.g.
+     `http://localhost:3000, https://todo.example.com`. Used for CORS and trusted origins.
+   - **Redirect URIs**: OAuth callback URLs in your app, if you use social sign-in.
+3. Click **Create**. The **secret** (`au1h_sk_…`) is shown once. Store it server-side; it
+   authenticates your backend to the [server-to-server API](/docs/reference/server-to-server).
+   You can regenerate it at any time.
+
+## What you now have
+
+| Value          | Where it goes                                                        |
+| -------------- | -------------------------------------------------------------------- |
+| Slug           | `appSlug` in the client and server SDKs; `x-app-id` header           |
+| Application id | Appears in JWTs as `applicationId`; rarely needed in your code       |
+| Secret         | `appSecret` in the server SDK's server-to-server client; never in a browser |
+| au1h URL       | `baseURL` / `au1hUrl` in the SDKs                                     |
+
+## Optional settings
+
+- **Active**: inactive applications reject every sign-in and token.
+- **Organizations**: lets the application's users create organizations, invite members and
+  switch between them. See [Organizations](/docs/concepts/organizations).
+- **Proxy routes**: map a path pattern to your backend to use the
+  [gateway](/docs/concepts/gateway).
+
+Next: the [quickstart](/docs/getting-started/quickstart).

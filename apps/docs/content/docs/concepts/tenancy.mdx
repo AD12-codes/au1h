@@ -1,0 +1,50 @@
+---
+title: Tenancy
+description: How au1h keeps every application's users, sessions and organizations apart.
+---
+
+## Applications are tenants
+
+Every row that belongs to an application carries its `application_id`: users, sessions,
+accounts (passwords and OAuth links), organizations, memberships, invitations. Verification
+tokens are namespaced the same way. The au1h admin portal is itself a tenant with the
+reserved slug `au1h-admin`.
+
+```
+organization  (admin workspace; owns applications)
+  └── application  (slug, secret, allowed origins, routes)
+        ├── users, sessions, accounts
+        └── organizations, members, invitations   (if enabled)
+```
+
+## How a request is scoped
+
+1. The request names its application with `x-app-id: <slug>` (or, during an OAuth callback,
+   the cookie au1h set when the flow started).
+2. au1h resolves the slug to an application, rejecting unknown or inactive ones, and records
+   the tenant in request-scoped storage.
+3. Every database call Better Auth makes for a tenant-scoped table goes through a wrapper
+   that adds `application_id = <tenant>` to reads and writes and stamps it on inserts. A
+   request can never see or touch another application's rows, even by id.
+4. Sessions cached in Redis are checked the same way: a session cookie issued for app A is
+   simply "not found" when presented with `x-app-id: B`.
+
+This happens below Better Auth, so every endpoint and plugin inherits it. There is no
+per-endpoint code to get wrong.
+
+## What this means in practice
+
+- **Same email, separate users.** Sign-ups with `john@example.com` in two apps create two
+  users with different ids and passwords.
+- **Uniqueness is per application.** Emails, OAuth accounts and organization slugs are
+  unique within an app, not globally. Admin-portal users are unique among themselves.
+- **Tokens are per application.** A JWT's `aud` is the slug; backends reject other apps'
+  tokens. See [Tokens](/docs/concepts/tokens).
+- **Bans and revocations are per application.** Banning `john@example.com` in `todo`
+  does not touch his account in `books`.
+
+## The admin scope
+
+Admin-portal users have no `application_id`. They are grouped into **workspaces** (Better
+Auth organizations) and the admin API is scoped to the caller's active workspace. Admin
+sign-up is closed by default; see [Security](/docs/concepts/security).
