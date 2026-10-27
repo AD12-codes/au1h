@@ -3,13 +3,11 @@ import { Pool } from "pg";
 import { logger } from "@/utils/logger";
 
 const getDatabaseUrl = () => {
-  if (process.env.APP_ENV === "production") {
-    return process.env.DATABASE_PROD_URL || "";
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("DATABASE_URL is not set");
   }
-  if (process.env.APP_ENV === "development") {
-    return process.env.DATABASE_DEV_URL || "";
-  }
-  return process.env.DATABASE_URL || "";
+  return url;
 };
 
 const pool = new Pool({

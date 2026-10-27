@@ -1,0 +1,15 @@
+**/node_modules
+**/.next
+**/.source
+**/out
+**/dist
+**/.turbo
+**/target
+**/.venv
+**/__pycache__
+**/.env
+**/.env.*
+!**/.env.example
+.git
+*.local.md
+dump.rdb

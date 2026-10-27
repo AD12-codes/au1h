@@ -1,0 +1,78 @@
+---
+title: Deploy
+description: Run au1h in production with Docker, on Dokploy or any compose host.
+---
+
+The repository ships a `docker-compose.yml` with five services: the au1h server, the admin
+portal, the docs site, Postgres and Redis. Each app also has its own `Dockerfile` if you
+want to run Postgres and Redis elsewhere.
+
+## Hosts
+
+Pick three hostnames and point them at your server. This guide uses:
+
+| Host               | Service      | Container port |
+| ------------------ | ------------ | -------------- |
+| `api.example.com`  | `server`     | 4444           |
+| `app.example.com`  | `web`        | 80             |
+| `docs.example.com` | `docs`       | 80             |
+
+The server URL is **baked into the admin portal at build time** (`VITE_SERVER_URL`), so
+decide it before building.
+
+## Variables
+
+Copy `deploy/.env.example` and set:
+
+| Variable             | Value                                                                 |
+| -------------------- | --------------------------------------------------------------------- |
+| `POSTGRES_PASSWORD`  | Password for the bundled Postgres                                     |
+| `BETTER_AUTH_SECRET` | `openssl rand -base64 48`. Changing it later invalidates sessions and the JWT signing key |
+| `BETTER_AUTH_URL`    | `https://api.example.com`                                             |
+| `CORS_ORIGIN`        | `https://app.example.com`                                             |
+| `AU1H_ADMIN_EMAILS`  | Your email, so you can register additional admins later               |
+
+The compose file sets `NODE_ENV=production` and `AU1H_TRUST_PROXY=true` (the stack sits
+behind a reverse proxy that sets `x-forwarded-for`).
+
+## Dokploy
+
+1. **Create → Compose**, source: this Git repository, compose path `docker-compose.yml`.
+2. **Environment**: paste the variables above.
+3. **Domains**: add one per service: `api.example.com → server:4444`,
+   `app.example.com → web:80`, `docs.example.com → docs:80`, HTTPS on. Dokploy's Traefik
+   issues the certificates.
+4. **Deploy.** The server container applies database migrations on start, then listens.
+
+If your DNS is proxied through Cloudflare, set its SSL mode to **Full (strict)** so the
+origin certificate is verified, and keep the records proxied or DNS-only consistently.
+
+## Plain docker compose
+
+```bash
+cp deploy/.env.example .env     # edit it
+docker compose up -d --build
+```
+
+Put a reverse proxy (Caddy, Traefik, nginx) in front, terminating TLS and forwarding each
+host to the service's port.
+
+## First run
+
+Open `https://app.example.com/register`. The first account becomes an admin; after that,
+sign-up requires `AU1H_ADMIN_EMAILS` or a workspace invitation. Then register your first
+application.
+
+## Updating
+
+Pull and redeploy. Migrations are applied automatically by the server on start
+(`bun run start` runs `src/db/migrate.ts` first). Back up the `postgres-data` volume
+before major upgrades.
+
+## What is not in the box
+
+- **Email** for verification and password reset: not wired yet.
+- **Backups**: the bundled Postgres has no backup job; use Dokploy's database backups
+  or your own.
+- **Scaling**: one server container is plenty for most setups. Several can run behind
+  the same Postgres and Redis; caches and rate limits are shared through Redis.

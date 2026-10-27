@@ -1,0 +1,83 @@
+# au1h — full stack for Dokploy / docker compose.
+#
+# Dokploy: create a "Compose" service from this repository, set the variables
+# from deploy/.env.example in its Environment tab, then add domains:
+#   api.au1h.dev -> service "server", port 4444
+#   app.au1h.dev -> service "web",    port 80
+#   au1h.dev     -> service "docs",   port 80
+# Postgres and Redis run inside the stack with named volumes. Use Dokploy's
+# managed databases instead if you prefer; then drop those two services and
+# point DATABASE_URL / REDIS_URL at them.
+services:
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: "4444"
+      DATABASE_URL: postgresql://au1h:${POSTGRES_PASSWORD}@postgres:5432/au1h
+      REDIS_URL: redis://redis:6379
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      AU1H_ADMIN_EMAILS: ${AU1H_ADMIN_EMAILS:-}
+      AU1H_TRUST_PROXY: "true"
+      AU1H_PROXY_ALLOW_PRIVATE_BACKENDS: ${AU1H_PROXY_ALLOW_PRIVATE_BACKENDS:-false}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    expose:
+      - "4444"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_SERVER_URL: ${BETTER_AUTH_URL}
+    restart: unless-stopped
+    expose:
+      - "80"
+
+  docs:
+    build:
+      context: .
+      dockerfile: apps/docs/Dockerfile
+    restart: unless-stopped
+    expose:
+      - "80"
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: au1h
+      POSTGRES_USER: au1h
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U au1h -d au1h"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:
