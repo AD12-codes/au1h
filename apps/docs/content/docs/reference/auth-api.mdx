@@ -14,6 +14,16 @@ The SDK wraps these; the table is for direct use and other languages.
 | `/sign-up/email`             | POST   | `{ email, password, name }` → creates the user in this app and a session |
 | `/sign-in/email`             | POST   | `{ email, password }` → session cookie           |
 | `/sign-in/social`            | POST   | `{ provider: "github" \| "google", callbackURL }` → redirect URL |
+| `/send-verification-email`   | POST   | `{ email, callbackURL }` → resends the verification link |
+| `/verify-email`              | GET    | Opened from the email (`?token=…&app=<slug>`); verifies and redirects |
+| `/request-password-reset`    | POST   | `{ email, redirectTo }` → emails a link that lands on `redirectTo?token=…` |
+| `/reset-password`            | POST   | `{ newPassword, token }`                          |
+| `/sign-in/magic-link`        | POST   | `{ email, callbackURL }` → emails a sign-in link  |
+| `/magic-link/verify`         | GET    | Opened from the email; sets the session cookie and redirects |
+| `/email-otp/send-verification-otp` | POST | `{ email, type: "sign-in" \| "email-verification" \| "forget-password" }` |
+| `/sign-in/email-otp`         | POST   | `{ email, otp }` → session cookie                 |
+| `/email-otp/verify-email`    | POST   | `{ email, otp }`                                  |
+| `/email-otp/reset-password`  | POST   | `{ email, otp, password }`                        |
 | `/sign-out`                  | POST   | Ends the session                                  |
 | `/get-session`               | GET    | `{ session, user }` or `null`                     |
 | `/token`                     | GET    | `{ token }`: a 15-minute JWT for your backend     |

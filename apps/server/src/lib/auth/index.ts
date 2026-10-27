@@ -1,6 +1,13 @@
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { admin, jwt, openAPI, organization } from "better-auth/plugins";
+import {
+  admin,
+  emailOTP,
+  jwt,
+  magicLink,
+  openAPI,
+  organization,
+} from "better-auth/plugins";
 
 import { db } from "@/db";
 import {
@@ -15,6 +22,7 @@ import {
   verifications,
 } from "@/db/schema/auth";
 import { redisService } from "@/utils/redis";
+import { sendAppEmail, VERIFY_EMAIL_TOKEN_TTL_SECONDS } from "../email";
 import { AU1H_ADMIN_APP_SLUG } from "./admin";
 import {
   fetchAppOrigins,
@@ -43,6 +51,23 @@ export const auth = betterAuth<BetterAuthOptions>({
 
   emailAndPassword: {
     enabled: true,
+    // Applications decide whether unverified users may sign in; the default
+    // keeps today's behaviour (no verification needed) unless configured.
+    requireEmailVerification:
+      process.env.AU1H_REQUIRE_EMAIL_VERIFICATION === "true",
+    resetPasswordTokenExpiresIn: 60 * 60, // 1 hour
+    sendResetPassword: async ({ user, url }) => {
+      await sendAppEmail(user.email, { kind: "reset-password", url });
+    },
+  },
+
+  emailVerification: {
+    sendOnSignUp: process.env.AU1H_SEND_VERIFICATION_ON_SIGNUP !== "false",
+    autoSignInAfterVerification: true,
+    expiresIn: VERIFY_EMAIL_TOKEN_TTL_SECONDS,
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendAppEmail(user.email, { kind: "verify-email", url });
+    },
   },
 
   // Every user/session/account query is confined to the tenant recorded in
@@ -194,6 +219,20 @@ export const auth = betterAuth<BetterAuthOptions>({
             aud,
           };
         },
+      },
+    }),
+    magicLink({
+      expiresIn: 60 * 15,
+      sendMagicLink: async ({ email, url }) => {
+        await sendAppEmail(email, { kind: "magic-link", url });
+      },
+    }),
+    emailOTP({
+      otpLength: 6,
+      expiresIn: 60 * 10,
+      allowedAttempts: 5,
+      sendVerificationOTP: async ({ email, otp, type }) => {
+        await sendAppEmail(email, { kind: "otp", code: otp, purpose: type });
       },
     }),
     admin(),

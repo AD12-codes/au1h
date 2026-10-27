@@ -394,10 +394,12 @@ page and all four `examples/` verify `aud` and read `applicationId` (never `app_
 
 ### 5.11 Operational / correctness gaps
 
-- **Only unit tests.** The tenant adapter is unit-tested (§5.1); there are no
-  integration tests against Postgres. The priority integration suite is: concurrent
-  sign-ups across two apps, same email in 2 apps + admin, login isolation (app A password
-  must fail on app B), OAuth link isolation, and proxy authz.
+- **Integration tests: started.** `apps/server/src/integration` runs the HTTP app
+  (`app.fetch`) against a real Postgres + Redis with an in-memory email outbox
+  (`bun run test:integration`; CI job `integration`). Covered today: the four email flows
+  and their cross-application rejection. Still to add: concurrent sign-ups across two
+  apps, same email in 2 apps + admin, password login isolation, OAuth link isolation,
+  proxy authz.
 - ~~**Caches are per-process.**~~ Done: one origins cache shared by CORS and the auth
   layer, and invalidation of origins/slugs/routes is broadcast to every instance over
   Redis pub/sub (`utils/cache-bus.ts`). TTLs remain as a safety net.
@@ -427,7 +429,8 @@ page and all four `examples/` verify `aud` and read `applicationId` (never `app_
 1. ~~**Fix tenant isolation properly** (§5.1)~~ — done: `AsyncLocalStorage` +
    adapter-level scoping.
 2. **Write the integration test suite** (§5.11) against Postgres so #1 stays provable and
-   Better Auth upgrades stop being scary.
+   Better Auth upgrades stop being scary. Harness and the email-flow suite exist; the
+   isolation suite listed in §5.11 is next.
 3. ~~**Close the authz holes** (§5.3, §5.4, §5.2)~~ — done.
 4. ~~**Make app identity real** (§5.6)~~ — done.
 5. ~~**Fix the unique indexes** (§5.5) and session revocation (§5.8)~~ — done.
@@ -447,9 +450,13 @@ Things that would make au1h genuinely more attractive than "just add Better Auth
   `/react` entry.
 - ~~**Backend middleware packages**~~ — done: `@au1h/server` (Hono, Express), and Go and
   Python packages under `packages/`. Rust remains an example only.
-- **Admin personal access tokens**, so scripts and the planned `au1h` CLI can call
-  `/api/v1` without a browser session; then the CLI itself (`au1h apps create --init`,
-  `au1h init` scaffolding against the SDK) and a CLI section in `apps/docs`.
+- ~~**Admin personal access tokens** and the `au1h` CLI~~ — done (`packages/cli`,
+  `/api/v1/tokens`, docs section).
+- ~~**Email flows**~~ — done (2026-10-27): verification, password reset, magic link and
+  email OTP, rendered per application (`lib/email`), providers `console | smtp | resend |
+  memory`. Tenancy: emailed links carry `?app=<slug>`; reset/magic-link tokens live in the
+  tenant-namespaced `verifications` table; the verification JWT (email-only) is bound to
+  the sending application in Redis and checked in `hooks.before`. Integration-tested.
 - **Hosted login pages** per application (branded with `applications.logo`), so a product
   doesn't even need to build a login form — redirect to au1h and come back.
 - **Per-application config** currently hardcoded globally: enabled providers, session TTL,
@@ -462,3 +469,32 @@ Things that would make au1h genuinely more attractive than "just add Better Auth
 - **Email verification + password reset**, neither of which is wired up today.
 - **Usage/analytics** on the applications dashboard (sign-ins over time, active sessions,
   proxy latency and error rates — the proxy already logs durations).
+
+---
+
+## 8. If au1h is hosted (app.au1h.dev)
+
+The self-hosted deployment is one operator, one database, many applications. A hosted
+offering adds a second axis: many *workspaces* (organizations) that do not trust each
+other, sharing one database. What that changes:
+
+- **Isolation becomes a product promise, not a deployment property.** Workspace scoping
+  today is `organization_id` filters in the admin services plus application scoping in
+  the auth adapter. Before taking money for it: Postgres RLS (§5.11) with the tenant set
+  per transaction, so a missed filter fails closed; and an integration suite that tries
+  to cross workspaces on every `/api/v1` and `/api/apps` route.
+- **Email is the operator's cost and reputation.** Hosted sending goes through au1h's
+  own provider and domain, so: per-workspace daily quotas, bounce/complaint handling,
+  and a way for a workspace to bring its own sender (per-application `EMAIL_*`, a
+  verified domain) once it outgrows the shared one. Magic link and OTP are the cheap
+  flows (one email per sign-in); verification and reset are rarer. All four stay
+  available, the quota is the knob.
+- **Data lifecycle.** Export (users, accounts, sessions of a workspace as JSON), delete
+  (cascade from `organizations`, already in place for applications), backups with a
+  tested restore, and retention for `verifications`/`sessions`.
+- **Dedicated databases are not needed for isolation**, only for very large or
+  regulated customers. Keep the shared schema and RLS as the default; a per-workspace
+  `DATABASE_URL` override is a later, separate feature.
+- **Abuse.** Open sign-up to `app.au1h.dev` means rate limits per workspace (not only
+  per IP), application-count and user-count quotas, and the ability to suspend a
+  workspace (`applications.is_active` already exists per application).

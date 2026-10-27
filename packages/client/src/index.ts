@@ -1,5 +1,6 @@
 import type { BetterAuthClientPlugin } from "better-auth";
 import { createAuthClient } from "better-auth/client";
+import { emailOTPClient, magicLinkClient } from "better-auth/client/plugins";
 import {
   type Au1hClientOptions,
   betterAuthClientOptions,
@@ -26,9 +27,18 @@ export interface CreateAu1hClientOptions<
   plugins?: P;
 }
 
+/**
+ * Always on, because the au1h server always serves them: `signIn.magicLink`,
+ * `emailOtp.sendVerificationOtp`, `signIn.emailOtp`, …
+ */
+type BuiltInPlugins = [
+  ReturnType<typeof magicLinkClient>,
+  ReturnType<typeof emailOTPClient>,
+];
+
 type BetterAuthOptionsFor<P extends BetterAuthClientPlugin[]> = ReturnType<
   typeof betterAuthClientOptions
-> & { plugins: P };
+> & { plugins: [...BuiltInPlugins, ...P] };
 
 export type Au1hClient<P extends BetterAuthClientPlugin[] = []> = ReturnType<
   typeof createAuthClient<BetterAuthOptionsFor<P>>
@@ -42,6 +52,7 @@ export type Au1hClient<P extends BetterAuthClientPlugin[] = []> = ReturnType<
  * ```ts
  * export const auth = createAu1hClient({ baseURL: AU1H_URL, appSlug: "my-app" });
  * await auth.signIn.email({ email, password });
+ * await auth.signIn.magicLink({ email, callbackURL: "/" });
  * const res = await auth.authFetch("https://api.my-app.com/me");
  * ```
  */
@@ -51,7 +62,11 @@ export function createAu1hClient<P extends BetterAuthClientPlugin[] = []>(
   const tokens = createTokenManager(options);
   const client = createAuthClient({
     ...betterAuthClientOptions(options, tokens),
-    plugins: options.plugins ?? ([] as unknown as P),
+    plugins: [
+      magicLinkClient(),
+      emailOTPClient(),
+      ...(options.plugins ?? ([] as unknown as P)),
+    ] as [...BuiltInPlugins, ...P],
   });
   return Object.assign(client, tokens, {
     appSlug: options.appSlug,
