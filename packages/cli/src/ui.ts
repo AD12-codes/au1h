@@ -76,7 +76,8 @@ export async function askSecret(question: string): Promise<string> {
   const anyRl = rl as unknown as { _writeToOutput: (s: string) => void };
   const original = anyRl._writeToOutput;
   stdout.write(`${question}: `);
-  anyRl._writeToOutput = () => {};
+  // Mute echo while the secret is typed.
+  anyRl._writeToOutput = () => stdout.write("");
   try {
     const answer = (await rl.question("")).trim();
     stdout.write("\n");
