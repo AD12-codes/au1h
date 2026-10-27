@@ -5,10 +5,19 @@
   "license": "MIT",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "exports": {
-    ".": { "types": "./dist/index.d.mts", "import": "./dist/index.mjs" },
-    "./react": { "types": "./dist/react.d.mts", "import": "./dist/react.mjs" }
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./react": {
+      "types": "./dist/react.d.mts",
+      "import": "./dist/react.mjs"
+    }
   },
   "scripts": {
     "build": "tsdown",
@@ -19,7 +28,9 @@
     "react": ">=18"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true }
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "better-auth": "1.3.34",
@@ -27,5 +38,14 @@
     "@types/react": "^19.2.7",
     "tsdown": "0.16.2",
     "typescript": "5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AD12-codes/au1h.git",
+    "directory": "packages/client"
+  },
+  "homepage": "https://github.com/AD12-codes/au1h",
+  "publishConfig": {
+    "access": "public"
   }
 }

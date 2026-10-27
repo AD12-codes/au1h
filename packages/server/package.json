@@ -47,5 +47,14 @@
     "hono": "^4.8.2",
     "tsdown": "0.16.2",
     "typescript": "5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AD12-codes/au1h.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/AD12-codes/au1h",
+  "publishConfig": {
+    "access": "public"
   }
 }

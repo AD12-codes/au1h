@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun x biome check .
+      - run: bun run --filter '@au1h/*' build
+      - run: bun run check-types
+      - run: cd apps/server && bun test
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: cd packages/go && go vet ./... && go build ./...
+      - uses: astral-sh/setup-uv@v6
+      - run: cd packages/python && uv build

@@ -1,0 +1,41 @@
+name: Release Python package
+
+# Publishes packages/python to PyPI via trusted publishing (no API token).
+# Trigger: push a tag like python-v0.1.0 whose version matches pyproject.toml.
+on:
+  push:
+    tags:
+      - "python-v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Check tag matches pyproject version
+        run: |
+          tag="${GITHUB_REF_NAME#python-v}"
+          version="$(uv version --short)"
+          [ "$tag" = "$version" ] || { echo "tag $tag != pyproject version $version"; exit 1; }
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: packages/python/dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # required for trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

@@ -1,0 +1,39 @@
+name: Release npm packages
+
+# Publishes @au1h/client and @au1h/server with npm trusted publishing (OIDC),
+# so no NPM_TOKEN is stored. Trigger: push a tag like npm-v0.1.0 whose version
+# matches both package.json files. Requires each package to be configured for
+# trusted publishing on npmjs.com (Package settings → Trusted publisher:
+# repository AD12-codes/au1h, workflow release-npm.yml).
+on:
+  push:
+    tags:
+      - "npm-v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: bun install --frozen-lockfile
+      - name: Check tag matches package versions
+        run: |
+          tag="${GITHUB_REF_NAME#npm-v}"
+          for p in client server; do
+            v="$(node -p "require('./packages/$p/package.json').version")"
+            [ "$tag" = "$v" ] || { echo "tag $tag != packages/$p version $v"; exit 1; }
+          done
+      - run: bun run --filter '@au1h/*' build
+      - name: Publish
+        run: |
+          for p in client server; do
+            (cd packages/$p && npm publish --access public --provenance)
+          done
