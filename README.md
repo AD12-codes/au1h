@@ -158,6 +158,11 @@ cd apps/server && AU1H_TEST_DATABASE_URL=postgresql://…/au1h_test bun run test
 
 Please report vulnerabilities privately, see [SECURITY.md](SECURITY.md).
 
+## Support
+
+au1h is free and self-hosted. If it saves you from wiring auth for the fifth time,
+you can [buy me a coffee](https://buymeacoffee.com/anshuldharmadhikari).
+
 ## License
 
 [MIT](LICENSE)
