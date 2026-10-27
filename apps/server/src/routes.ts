@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { applicationsRoute } from "./applications/route";
 import { healthRoute } from "./health/route";
 import { routesConfigRoute } from "./routes-config/route";
+import { tokensRoute } from "./tokens/route";
 import { usersRoute } from "./users/route";
 
 // Create a new Hono instance for v1 routes
@@ -16,3 +17,4 @@ routes.route("/health", healthRoute);
 routes.route("/applications", applicationsRoute);
 routes.route("/users", usersRoute);
 routes.route("/routes", routesConfigRoute);
+routes.route("/tokens", tokensRoute);

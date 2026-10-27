@@ -1,1 +1,1 @@
-{ "title": "Reference", "pages": ["auth-api", "server-to-server", "admin-api", "headers", "configuration"] }
+{"title": "Reference", "pages": ["auth-api", "server-to-server", "admin-api", "tokens", "headers", "configuration"]}

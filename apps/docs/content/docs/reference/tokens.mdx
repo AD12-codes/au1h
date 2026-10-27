@@ -1,0 +1,38 @@
+---
+title: Personal access tokens
+description: Call the admin API from scripts, CI and the au1h CLI without a browser session.
+---
+
+A personal access token (PAT) stands in for your admin-portal session. It is bound to the
+workspace it was created in and carries the same rights you have there.
+
+## Create one
+
+Admin portal → **API tokens → New token**. Give it a name and an expiry. The token
+(`au1h_pat_…`) is shown once; only a SHA-256 hash is stored.
+
+Tokens can only be created from the portal (a browser session), never with another token,
+so a leaked token cannot mint longer-lived replacements.
+
+## Use it
+
+```bash
+curl -H "Authorization: Bearer au1h_pat_…" https://auth.example.com/api/v1/applications
+```
+
+Every [admin API](/docs/reference/admin-api) route accepts it in place of the session
+cookie. The `au1h` CLI stores one after `au1h login`.
+
+## Revoke
+
+Delete it on the API tokens page, or `DELETE /api/v1/tokens/:id`. Revocation is
+immediate. Tokens also stop working when they expire, when the user is banned, or when the
+user leaves the workspace.
+
+## Endpoints
+
+| Endpoint              | Method | Notes                                                     |
+| --------------------- | ------ | --------------------------------------------------------- |
+| `/api/v1/tokens`      | GET    | Your active tokens for this workspace (name, prefix, dates) |
+| `/api/v1/tokens`      | POST   | `{ name, expiresInDays? }` → `{ token, secret }`. Session only |
+| `/api/v1/tokens/:id`  | DELETE | Revoke                                                    |

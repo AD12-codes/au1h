@@ -29,6 +29,7 @@ const SECTIONS = {
   dashboard: { label: "Dashboard", to: "/dashboard" },
   applications: { label: "Applications", to: "/applications" },
   users: { label: "Users", to: "/users" },
+  tokens: { label: "API tokens", to: "/tokens" },
   docs: { label: "Docs", to: "/docs" },
 } as const;
 

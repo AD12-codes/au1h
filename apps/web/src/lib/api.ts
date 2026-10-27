@@ -89,3 +89,26 @@ export const applicationsApi = {
       }
     ),
 };
+
+export interface AdminApiToken {
+  id: string;
+  name: string;
+  prefix: string;
+  organizationId: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+export const tokensApi = {
+  list: () => fetchApi<{ tokens: AdminApiToken[] }>("/api/v1/tokens"),
+  create: (data: { name: string; expiresInDays?: number }) =>
+    fetchApi<{ token: AdminApiToken; secret: string }>("/api/v1/tokens", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  revoke: (id: string) =>
+    fetchApi<{ success: boolean }>(`/api/v1/tokens/${id}`, {
+      method: "DELETE",
+    }),
+};

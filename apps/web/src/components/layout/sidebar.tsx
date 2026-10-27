@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import {
   AppWindow,
   BookOpen,
+  KeyRound,
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
@@ -16,6 +17,7 @@ const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/applications", label: "Applications", icon: AppWindow },
   { to: "/users", label: "Users", icon: Users },
+  { to: "/tokens", label: "API tokens", icon: KeyRound },
 ] as const;
 
 const SECONDARY = [{ to: "/docs", label: "Docs", icon: BookOpen }] as const;

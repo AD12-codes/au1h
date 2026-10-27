@@ -229,3 +229,26 @@ export const invitations = pgTable("invitations", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
 });
+
+// ============================================================================
+// ADMIN API TOKENS - personal access tokens for the admin API (/api/v1)
+// Issued to an admin-portal user, scoped to one of their workspaces. Only a
+// SHA-256 hash of the token is stored; the token itself is shown once.
+// ============================================================================
+export const adminApiTokens = pgTable("admin_api_tokens", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  // First characters of the token, for display ("au1h_pat_3f9a…")
+  prefix: text("prefix").notNull(),
+  expiresAt: timestamp("expires_at"),
+  lastUsedAt: timestamp("last_used_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

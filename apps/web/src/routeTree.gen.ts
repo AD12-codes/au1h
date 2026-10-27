@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TokensRouteImport } from './routes/tokens'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DocsRouteImport } from './routes/docs'
@@ -19,6 +20,11 @@ import { Route as ApplicationsIndexRouteImport } from './routes/applications/ind
 import { Route as UsersIdRouteImport } from './routes/users/$id'
 import { Route as ApplicationsIdRouteImport } from './routes/applications/$id'
 
+const TokensRoute = TokensRouteImport.update({
+  id: '/tokens',
+  path: '/tokens',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
@@ -71,6 +77,7 @@ export interface FileRoutesByFullPath {
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/tokens': typeof TokensRoute
   '/applications/$id': typeof ApplicationsIdRoute
   '/users/$id': typeof UsersIdRoute
   '/applications': typeof ApplicationsIndexRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/tokens': typeof TokensRoute
   '/applications/$id': typeof ApplicationsIdRoute
   '/users/$id': typeof UsersIdRoute
   '/applications': typeof ApplicationsIndexRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/docs': typeof DocsRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/tokens': typeof TokensRoute
   '/applications/$id': typeof ApplicationsIdRoute
   '/users/$id': typeof UsersIdRoute
   '/applications/': typeof ApplicationsIndexRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/login'
     | '/register'
+    | '/tokens'
     | '/applications/$id'
     | '/users/$id'
     | '/applications'
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/login'
     | '/register'
+    | '/tokens'
     | '/applications/$id'
     | '/users/$id'
     | '/applications'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/login'
     | '/register'
+    | '/tokens'
     | '/applications/$id'
     | '/users/$id'
     | '/applications/'
@@ -141,6 +153,7 @@ export interface RootRouteChildren {
   DocsRoute: typeof DocsRoute
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
+  TokensRoute: typeof TokensRoute
   ApplicationsIdRoute: typeof ApplicationsIdRoute
   UsersIdRoute: typeof UsersIdRoute
   ApplicationsIndexRoute: typeof ApplicationsIndexRoute
@@ -149,6 +162,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tokens': {
+      id: '/tokens'
+      path: '/tokens'
+      fullPath: '/tokens'
+      preLoaderRoute: typeof TokensRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/register': {
       id: '/register'
       path: '/register'
@@ -221,6 +241,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsRoute: DocsRoute,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
+  TokensRoute: TokensRoute,
   ApplicationsIdRoute: ApplicationsIdRoute,
   UsersIdRoute: UsersIdRoute,
   ApplicationsIndexRoute: ApplicationsIndexRoute,

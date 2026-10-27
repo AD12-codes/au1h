@@ -4,13 +4,16 @@ description: What the admin portal uses, available to scripts with an admin sess
 ---
 
 All routes under `/api/v1` except `/health` require an **admin-portal session** (sign in
-with `x-app-id: au1h-admin`) with an active workspace, and are scoped to that workspace.
-Unauthenticated calls get `401`; a client-application session also gets `401`.
+with `x-app-id: au1h-admin`) with an active workspace, or a personal access token, and are
+scoped to that workspace. Unauthenticated calls get `401`; a client-application session
+also gets `401`.
 
-<Callout type="info">
-  Personal access tokens for scripts and the `au1h` CLI are planned. Today the only
-  credential is the session cookie.
-</Callout>
+Scripts, CI and the `au1h` CLI authenticate with a
+[personal access token](/docs/reference/tokens) instead:
+
+```
+Authorization: Bearer au1h_pat_…
+```
 
 ## Applications
 
