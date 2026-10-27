@@ -1,4 +1,1 @@
-{
-  "title": "au1h",
-  "pages": ["index", "getting-started", "concepts", "sdks", "reference", "examples"]
-}
+{"title": "au1h", "pages": ["index", "getting-started", "concepts", "sdks", "cli", "reference", "examples"]}

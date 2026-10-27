@@ -52,6 +52,22 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/cli/**"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off"
+          },
+          "style": {
+            "noNestedTernary": "off"
+          },
+          "nursery": {
+            "noIncrementDecrement": "off"
+          }
+        }
+      }
     }
   ]
 }

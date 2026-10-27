@@ -1,0 +1,48 @@
+---
+title: Applications
+description: au1h apps — list, create, inspect, update, delete, rotate secrets.
+---
+
+```bash
+au1h apps list
+```
+
+```
+SLUG   NAME      STATUS  USERS  SESSIONS  ORGS
+todo   Todo App  active  128    41        on
+books  Books     active  9      2         off
+```
+
+## Create
+
+```bash
+au1h apps create todo \
+  --name "Todo App" \
+  --origins "http://localhost:3000,https://todo.example.com" \
+  --redirects "https://todo.example.com/callback" \
+  --organizations \
+  --init
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `[slug]` | Lowercase letters, digits, hyphens. Prompted if omitted. This is the `x-app-id` value and the JWT `aud` |
+| `--name` | Display name; defaults to the slug |
+| `--origins` | Comma-separated browser origins allowed to call au1h for this app (CORS) |
+| `--redirects` | Comma-separated OAuth redirect URIs |
+| `--organizations` | Let the app's users create organizations |
+| `--init` | Run `au1h init` for this app in the current directory afterwards |
+| `-y` | No prompts; omitted values stay empty |
+
+The secret (`au1h_sk_…`) is printed **once**. It authenticates your backend to the
+[server-to-server API](/docs/reference/server-to-server); browsers never need it.
+
+## Inspect and change
+
+```bash
+au1h apps show todo
+au1h apps update todo --origins "https://todo.example.com" --organizations true
+au1h apps update todo --active false        # reject every sign-in and token
+au1h apps secret rotate todo                # old secret stops working immediately
+au1h apps delete todo                       # and all of its users, sessions and routes
+```

@@ -1,0 +1,33 @@
+---
+title: Routes
+description: au1h routes — configure the gateway from the terminal.
+---
+
+Gateway routes map a path under `/proxy` to one of your backends; au1h authenticates the
+caller and forwards the request with trusted user headers. See
+[Gateway](/docs/concepts/gateway).
+
+```bash
+au1h routes add todo "/todos/*" http://todo-api:8080 --methods GET,POST,PUT,DELETE
+```
+
+```
+✓ Route /todos/* → http://todo-api:8080 (GET, POST, PUT, DELETE)
+  Clients call https://api.example.com/proxy/todos/… with x-app-id: todo
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `<pattern>` | `/todos/*` (wildcard) or `/todos/:id` (parameter), matched after `/proxy` |
+| `<backend-url>` | `http(s)` only, no credentials. In production, private and loopback hosts are refused unless the server allows them |
+| `--methods` | Comma-separated; default `GET,POST,PUT,PATCH,DELETE` |
+| `--name` | Display name; defaults to the pattern |
+| `--keep-prefix` | Forward the full path instead of only the part after the matched prefix |
+
+```bash
+au1h routes list                 # every route in the workspace
+au1h routes list todo            # one application
+au1h routes disable <route-id>
+au1h routes enable <route-id>
+au1h routes remove <route-id>
+```

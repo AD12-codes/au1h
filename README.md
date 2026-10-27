@@ -20,7 +20,7 @@ product's API traffic to its backend with verified user context attached.
 | `apps/server`   | Hono + Bun API: Better Auth, tenant-scoped adapter, admin API, proxy  |
 | `apps/web`      | Admin portal (React, TanStack Router, shadcn/ui), port 4445           |
 | `apps/docs`     | Documentation site (Fumadocs, static export), port 4446               |
-| `packages/*`    | SDKs: `@au1h/client`, `@au1h/server` (Hono/Express), Go module, Python package |
+| `packages/*`    | SDKs: `@au1h/client`, `@au1h/server` (Hono/Express), Go module, Python package, and the `au1h` CLI |
 | `examples/`     | Minimal Go, Rust, Python and TypeScript backends + demo pages         |
 | `docs/`         | `ARCHITECTURE.md` (design + status), `INTEGRATION.md` (how to use it) |
 

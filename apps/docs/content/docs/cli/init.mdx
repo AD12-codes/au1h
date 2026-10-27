@@ -1,0 +1,34 @@
+---
+title: Scaffolding
+description: au1h init — add the SDK to a project in one step.
+---
+
+```bash
+cd my-app
+au1h init --app todo
+```
+
+`init` looks at the current directory, decides what kind of project it is, and writes the
+minimum needed to start using au1h. It never overwrites an existing file unless you pass
+`--force`, and it only appends environment variables that are not already set.
+
+| Detected | Writes | Install |
+| --- | --- | --- |
+| Next.js (`next` in dependencies) | `src/lib/au1h.ts` (or `lib/au1h.ts`) with `createAu1hClient` from `@au1h/client/react`; `.env.local` with `NEXT_PUBLIC_AU1H_URL`, `NEXT_PUBLIC_AU1H_APP_SLUG`, `AU1H_URL`, `AU1H_APP_SLUG` | `@au1h/client better-auth` |
+| Vite / React | `src/lib/au1h.ts`; `.env` with `VITE_AU1H_URL`, `VITE_AU1H_APP_SLUG` | `@au1h/client better-auth` |
+| Hono / Express | `src/au1h.ts` with `createVerifier` and the framework's `requireAu1hUser`; `.env` with `AU1H_URL`, `AU1H_APP_SLUG` | `@au1h/server` |
+| Other Node project | Same as Hono | `@au1h/server` |
+| Go (`go.mod`) | `au1h_example.go` with a commented verifier setup; `.env` | `go get github.com/AD12-codes/au1h/packages/go` |
+| Python (`pyproject.toml` / `requirements.txt`) | `au1h_example.py` with a FastAPI dependency example; `.env` | `pip install "au1h[fastapi]"` |
+
+The package manager in the install hint follows the lockfile it finds (`bun`, `pnpm`,
+`yarn`, otherwise `npm`). `init` prints the install command rather than running it.
+
+| Flag | Meaning |
+| --- | --- |
+| `--app <slug>` | Application slug (prompted if omitted) |
+| `--url <server>` | au1h server URL; defaults to the one you logged in to |
+| `--force` | Overwrite files `init` would otherwise leave alone |
+| `-y` | No prompts |
+
+`au1h apps create <slug> --init` does the registration and the scaffolding together.

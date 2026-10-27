@@ -13,7 +13,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun x biome check .
-      - run: bun run --filter '@au1h/*' build
+      - run: bun run --filter './packages/*' build
       - run: bun run check-types
       # No .env in CI on purpose: unit tests must not need a database.
       - run: cd apps/server && bun --env-file=/dev/null test

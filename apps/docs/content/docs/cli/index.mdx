@@ -1,0 +1,61 @@
+---
+title: au1h CLI
+description: Register applications, manage gateway routes and scaffold the SDK from your terminal.
+---
+
+The `au1h` command talks to your au1h server's admin API with a personal access token, so
+you never have to open the portal for the everyday steps.
+
+```bash
+npm i -g au1h          # or run ad hoc: bunx au1h …  /  npx au1h …
+```
+
+Requires Node 20 or newer (or Bun).
+
+## Log in
+
+```bash
+au1h login
+```
+
+It asks for the server URL and a token. Create the token in the admin portal under
+**API tokens → New token**, paste it, and the CLI verifies it and stores it in
+`~/.config/au1h/config.json` (mode 600). Non-interactively:
+
+```bash
+au1h login --url https://api.example.com --token au1h_pat_…
+```
+
+In CI, skip `login` and set `AU1H_URL` and `AU1H_TOKEN` in the environment. `AU1H_CONFIG_DIR`
+moves the config file.
+
+```bash
+au1h whoami            # server, user, workspace
+au1h logout            # forget the stored token (revoke it in the portal if it leaked)
+```
+
+A token is bound to the workspace it was created in; everything the CLI does happens in
+that workspace.
+
+## The two-minute path
+
+```bash
+au1h login
+cd my-app
+au1h apps create todo --origins http://localhost:3000 --init
+```
+
+`apps create` registers the application and prints its secret once; `--init` then runs
+[`au1h init`](/docs/cli/init) in the current directory, which writes the SDK client or
+verifier file and the environment variables for the framework it detects.
+
+## Commands
+
+| Command | Page |
+| --- | --- |
+| `apps list / create / show / update / delete`, `apps secret rotate` | [Applications](/docs/cli/apps) |
+| `routes list / add / remove / enable / disable` | [Routes](/docs/cli/routes) |
+| `init` | [Scaffolding](/docs/cli/init) |
+
+Every destructive command asks for confirmation unless you pass `-y`. `--help` or
+`au1h help` prints the full usage.
