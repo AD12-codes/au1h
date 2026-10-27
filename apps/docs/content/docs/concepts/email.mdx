@@ -78,7 +78,7 @@ work out of the box:
 ```ts
 import { createAu1hClient } from "@au1h/client";
 
-const auth = createAu1hClient({ baseURL: "https://api.au1h.dev", appSlug: "my-app" });
+const auth = createAu1hClient({ baseURL: "https://auth.example.com", appSlug: "my-app" });
 
 // Verification (sent on sign-up by default; resend on demand)
 await auth.sendVerificationEmail({ email, callbackURL: "/welcome" });

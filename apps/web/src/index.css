@@ -4,7 +4,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * au1h admin theme. Shares its tokens with au1h.dev: graphite surfaces,
+ * au1h admin theme. Shares its tokens with the docs site: graphite surfaces,
  * one electric-blue accent (#2F80FF), soft semantic colours for status.
  * Dark is the primary look.
  */

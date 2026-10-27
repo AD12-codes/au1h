@@ -1,10 +1,6 @@
 import { boolean, pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 
 // ============================================================================
-// ORGANIZATIONS - Workspace containers for applications (Better Auth plugin)
-// Must be defined before applications for foreign key reference
-// ============================================================================
-// ============================================================================
 // ORGANIZATIONS - Better Auth organization plugin, tenant-scoped.
 // application_id IS NULL  → an au1h admin-portal workspace (owns applications)
 // application_id = app.id → an organization inside that client application

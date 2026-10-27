@@ -115,8 +115,8 @@ function idIn(ids: string[]): Where[] {
  * writes against the resulting ids. The candidate sets are tiny (the same
  * email/token/userId across at most #applications tenants), so this costs one
  * extra round-trip on admin-portal requests only. Replacing the NULL sentinel
- * with a real "au1h system" application row (ARCHITECTURE.md §5.5) would make
- * this branch unnecessary.
+ * with a real "au1h system" application row would make this branch
+ * unnecessary.
  */
 export function withTenantScoping<A extends TransactionAdapter | Adapter>(
   adapter: A

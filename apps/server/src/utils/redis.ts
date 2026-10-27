@@ -1,9 +1,7 @@
 import Redis, { type RedisOptions } from "ioredis";
 import { logger } from "@/utils/logger";
 
-/**
- * RedisService - Singleton service for Redis connection management
- */
+/** Process-wide Redis connection (sessions cache, rate limits, cache bus). */
 class RedisService {
   private static instance: RedisService;
   private client: Redis | null = null;
@@ -11,9 +9,6 @@ class RedisService {
 
   private constructor() {}
 
-  /**
-   * Get singleton instance of RedisService
-   */
   static getInstance(): RedisService {
     if (!RedisService.instance) {
       RedisService.instance = new RedisService();
@@ -21,9 +16,6 @@ class RedisService {
     return RedisService.instance;
   }
 
-  /**
-   * Initialize Redis connection with retry logic
-   */
   async connect(config?: RedisOptions): Promise<void> {
     if (this.isConnected && this.client) {
       logger.debug("Redis client already connected");
@@ -31,7 +23,6 @@ class RedisService {
     }
 
     const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-    const password = process.env.REDIS_PASSWORD;
 
     const options: RedisOptions = {
       maxRetriesPerRequest: 3,
@@ -44,10 +35,6 @@ class RedisService {
       lazyConnect: false,
       ...config,
     };
-
-    if (password) {
-      options.password = password;
-    }
 
     try {
       this.client = new Redis(redisUrl, options);
@@ -83,9 +70,6 @@ class RedisService {
     }
   }
 
-  /**
-   * Get the Redis client instance
-   */
   getClient(): Redis {
     if (!(this.client && this.isConnected)) {
       throw new Error("Redis client not connected. Call connect() first.");
@@ -93,16 +77,10 @@ class RedisService {
     return this.client;
   }
 
-  /**
-   * Check if Redis is connected
-   */
   isReady(): boolean {
     return this.isConnected && this.client !== null;
   }
 
-  /**
-   * Gracefully disconnect from Redis
-   */
   async disconnect(): Promise<void> {
     if (this.client) {
       logger.info("Disconnecting Redis client...");
@@ -112,28 +90,6 @@ class RedisService {
       logger.info("Redis client disconnected");
     }
   }
-
-  /**
-   * Force disconnect (for emergency cleanup)
-   */
-  forceDisconnect(): void {
-    if (this.client) {
-      logger.warn("Force disconnecting Redis client");
-      this.client.disconnect();
-      this.client = null;
-      this.isConnected = false;
-    }
-  }
-
-  /**
-   * Flush all data (use with caution, mainly for testing)
-   */
-  async flushAll(): Promise<void> {
-    const client = this.getClient();
-    await client.flushall();
-    logger.warn("Flushed all Redis data");
-  }
 }
 
-// Export singleton instance
 export const redisService = RedisService.getInstance();
