@@ -2,11 +2,92 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 
+/*
+ * au1h.dev theme. Tokens from the design canvas: graphite surfaces, one
+ * electric-blue accent (#2F80FF), Inter for text, JetBrains Mono for code
+ * and the wordmark. Dark is the default.
+ */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-fd-background: #fafbfd;
+  --color-fd-foreground: #0f1420;
+  --color-fd-muted: #f2f4f8;
+  --color-fd-muted-foreground: #5b6478;
+  --color-fd-popover: #ffffff;
+  --color-fd-popover-foreground: #0f1420;
+  --color-fd-card: #ffffff;
+  --color-fd-card-foreground: #0f1420;
+  --color-fd-border: #e3e7ee;
+  --color-fd-primary: #2f80ff;
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-secondary: #f2f4f8;
+  --color-fd-secondary-foreground: #0f1420;
+  --color-fd-accent: #eef3fb;
+  --color-fd-accent-foreground: #0f1420;
+  --color-fd-ring: #2f80ff;
+
+  /* home page extras */
+  --color-au-surface-2: #f2f4f8;
+  --color-au-tint: rgba(47, 128, 255, 0.12);
+  --color-au-kw: #2459c2;
+  --color-au-str: #2e7146;
+  --color-au-dot: rgba(91, 100, 120, 0.16);
+  --color-au-glow: rgba(47, 128, 255, 0.07);
+}
+
+.dark {
+  --color-fd-background: #0b0e14;
+  --color-fd-foreground: #e6e9ef;
+  --color-fd-muted: #171c26;
+  --color-fd-muted-foreground: #8b93a7;
+  --color-fd-popover: #11151d;
+  --color-fd-popover-foreground: #e6e9ef;
+  --color-fd-card: #11151d;
+  --color-fd-card-foreground: #e6e9ef;
+  --color-fd-border: #232a36;
+  --color-fd-primary: #2f80ff;
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-secondary: #171c26;
+  --color-fd-secondary-foreground: #e6e9ef;
+  --color-fd-accent: #171c26;
+  --color-fd-accent-foreground: #e6e9ef;
+  --color-fd-ring: #2f80ff;
+
+  --color-au-surface-2: #171c26;
+  --color-au-tint: rgba(47, 128, 255, 0.12);
+  --color-au-kw: #7ea6f2;
+  --color-au-str: #9fcf8e;
+  --color-au-dot: rgba(139, 147, 167, 0.16);
+  --color-au-glow: rgba(47, 128, 255, 0.09);
+}
+
+.dark #nd-sidebar {
+  --color-fd-muted: #171c26;
+  --color-fd-secondary: #171c26;
+  --color-fd-muted-foreground: #8b93a7;
+}
+
 html {
   scrollbar-gutter: stable;
+  -webkit-font-smoothing: antialiased;
 }
 
 html > body[data-scroll-locked] {
   margin-right: 0px !important;
   --removed-body-scroll-bar-size: 0px !important;
 }
+
+/* Home page: hero backdrop (dot grid + faint blue glow, fading downwards). */
+.au-hero-bg {
+  background-image:
+    radial-gradient(ellipse 55% 60% at 74% 42%, var(--color-au-glow), transparent 70%),
+    radial-gradient(circle, var(--color-au-dot) 1px, transparent 1.3px);
+  background-size: 100% 100%, 22px 22px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 50%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 50%, transparent 100%);
+}
+.au-kw { color: var(--color-au-kw); }
+.au-str { color: var(--color-au-str); }
+.au-pn { color: var(--color-fd-muted-foreground); }

@@ -6,9 +6,9 @@ import {
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
-  ShieldCheck,
   Users,
 } from "lucide-react";
+import { ShieldIcon, Wordmark } from "@/components/shared/wordmark";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
@@ -70,12 +70,11 @@ export function Sidebar() {
           collapsed ? "justify-center" : "gap-2"
         )}
       >
-        <Link className="flex items-center gap-2" to="/dashboard">
-          <span className="grid size-6 place-items-center rounded-md bg-primary text-primary-foreground">
-            <ShieldCheck className="size-3.5" strokeWidth={2.5} />
-          </span>
-          {!collapsed && (
-            <span className="font-semibold text-sm tracking-tight">au1h</span>
+        <Link className="flex items-center" to="/dashboard">
+          {collapsed ? (
+            <ShieldIcon className="size-5 text-primary" />
+          ) : (
+            <Wordmark size={16} />
           )}
         </Link>
         {!collapsed && (

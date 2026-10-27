@@ -1,9 +1,9 @@
 import { useForm } from "@tanstack/react-form";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { ShieldCheck } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 import { StarsBackground } from "@/components/animate-ui/components/backgrounds/stars";
+import { Wordmark } from "@/components/shared/wordmark";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -70,17 +70,10 @@ function RouteComponent() {
       <div className="flex min-h-screen items-center justify-center p-4">
         <div className="w-full max-w-md">
           <div className="mb-6 flex flex-col items-center gap-4">
-            <div className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground shadow-md">
-              <ShieldCheck className="size-5" strokeWidth={2.5} />
-            </div>
-            <div className="space-y-1 text-center">
-              <h1 className="font-semibold text-2xl text-foreground tracking-tight">
-                au1h
-              </h1>
-              <p className="text-[13px] text-muted-foreground">
-                Auth for all of your apps, in one place.
-              </p>
-            </div>
+            <Wordmark size={30} />
+            <p className="text-center text-[13px] text-muted-foreground">
+              Auth for all of your apps, in one place.
+            </p>
           </div>
 
           <Card className="border-border/80 bg-card/90 shadow-xl backdrop-blur">
