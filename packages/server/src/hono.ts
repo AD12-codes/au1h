@@ -84,14 +84,10 @@ export function requireAu1hProxy(
     }
     if (verifier) {
       try {
-        const claims = await verifier.verifyProxyToken(ctx.proxyToken);
-        if (claims.sub !== ctx.user.id) {
-          throw new Au1hAuthError(
-            "proxy token does not match x-user-id",
-            401,
-            "PROXY_MISMATCH"
-          );
-        }
+        await verifier.verifyProxyToken(ctx.proxyToken, {
+          userId: ctx.user.id,
+          email: ctx.user.email,
+        });
       } catch (err) {
         return reject(c, err);
       }

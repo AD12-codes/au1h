@@ -9,9 +9,7 @@ import { getTenantScope } from "./tenant-context";
 
 /**
  * Session creation hook: pick the user's first organization as the active one.
- *
- * `applicationId` is no longer set here — the tenant-scoped adapter stamps it
- * on every `session` (and `account`) row from the request's tenant.
+ * (`applicationId` is stamped by the tenant-scoped adapter, not here.)
  */
 export const sessionCreateBefore = async (
   session: {

@@ -1,6 +1,6 @@
-/** biome-ignore-all lint/performance/noNamespaceImport: <not important> */
-/** biome-ignore-all lint/a11y/noStaticElementInteractions: <not important> */
-/** biome-ignore-all lint/a11y/noNoninteractiveElementInteractions: <not important> */
+/** biome-ignore-all lint/performance/noNamespaceImport: vendored animate-ui component, kept as upstream */
+/** biome-ignore-all lint/a11y/noStaticElementInteractions: decorative background reacting to pointer movement */
+/** biome-ignore-all lint/a11y/noNoninteractiveElementInteractions: decorative background reacting to pointer movement */
 "use client";
 
 import {

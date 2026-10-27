@@ -14,6 +14,12 @@ function getJwks() {
   return jwks;
 }
 
+/**
+ * `typ` claim of the gateway's `x-au1h-token`. It proves a request came
+ * through au1h; it is not a user access token and is rejected as one.
+ */
+export const PROXY_TOKEN_TYPE = "au1h-proxy";
+
 export interface Au1hJwtClaims extends JWTPayload {
   sub: string;
   email: string;
@@ -45,6 +51,11 @@ export async function verifyAu1hJwt(
     });
     if (typeof payload.sub !== "string" || typeof payload.email !== "string") {
       throw new InvalidTokenError("token is missing sub or email");
+    }
+    if (payload.typ === PROXY_TOKEN_TYPE) {
+      throw new InvalidTokenError(
+        "a gateway proof token is not an access token"
+      );
     }
     return payload as Au1hJwtClaims;
   } catch (err) {

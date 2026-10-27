@@ -6,10 +6,10 @@ verifies the au1h JWT and returns the signed-in user's info.
 
 | Language   | Folder         | Stack                        | Port | App slug (`x-app-id`) |
 | ---------- | -------------- | ---------------------------- | ---- | --------------------- |
-| Go         | `go/`          | net/http + lestrrat-go/jwx   | 8081 | `example-go`          |
-| Rust       | `rust/`        | axum + jsonwebtoken          | 8082 | `example-rust`        |
-| Python     | `python/`      | FastAPI + PyJWT              | 8083 | `example-python`      |
-| TypeScript | `typescript/`  | Bun + Hono + jose            | 8084 | `example-typescript`  |
+| Go         | `go/`          | net/http + the au1h Go module | 8081 | `example-go`          |
+| Rust       | `rust/`        | axum + jsonwebtoken           | 8082 | `example-rust`        |
+| Python     | `python/`      | FastAPI + `au1h[fastapi]`     | 8083 | `example-python`      |
+| TypeScript | `typescript/`  | Bun + Hono + `@au1h/server`   | 8084 | `example-typescript`  |
 
 The point of the demo: **sign in with the same email in all four apps.** Each app
 gets its own user (different user id, password, session) because au1h scopes identity
@@ -37,7 +37,7 @@ GET  /api/me  Authorization: Bearer <JWT>  ────────────�
   `aud=<its own slug>`.
 - The JWT carries `sub`, `email`, `name`, `applicationId`, and `aud` is the application
   slug. Because every backend checks `aud` against its own `AU1H_APP_SLUG`, a token minted
-  for one app is rejected by every other app's backend (see `docs/ARCHITECTURE.md` §5.10).
+  for one app is rejected by every other app's backend.
 
 ## Setup
 
@@ -48,18 +48,12 @@ GET  /api/me  Authorization: Bearer <JWT>  ────────────�
    - Slug: exactly the slug from the table (this is the `x-app-id`)
    - Allowed origins: `http://localhost:<port>` from the table
 
-   Or, for a local database, insert them directly:
+   Or with the CLI, after `au1h login`:
 
-   ```sql
-   insert into applications (id, organization_id, name, slug, secret, allowed_origins, is_active)
-   select gen_random_uuid()::text, '<your organization id>', n, s, gen_random_uuid()::text, o, true
-   from (values
-     ('Example · Go',         'example-go',         'http://localhost:8081'),
-     ('Example · Rust',       'example-rust',       'http://localhost:8082'),
-     ('Example · Python',     'example-python',     'http://localhost:8083'),
-     ('Example · TypeScript', 'example-typescript', 'http://localhost:8084')
-   ) as v(n, s, o)
-   on conflict (slug) do nothing;
+   ```bash
+   for l in go:8081 rust:8082 python:8083 typescript:8084; do
+     au1h apps create "example-${l%%:*}" --origins "http://localhost:${l##*:}"
+   done
    ```
 
 3. **Start the backends**, each in its own terminal:

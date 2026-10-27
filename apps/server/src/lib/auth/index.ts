@@ -21,12 +21,13 @@ import {
   users,
   verifications,
 } from "@/db/schema/auth";
+import { CLIENT_IP_HEADER } from "@/middleware/client-ip";
 import { redisService } from "@/utils/redis";
 import { sendAppEmail, VERIFY_EMAIL_TOKEN_TTL_SECONDS } from "../email";
 import { AU1H_ADMIN_APP_SLUG } from "./admin";
 import {
-  fetchAppOrigins,
   isOrganizationsEnabled,
+  originsForTenant,
   resolveApplicationSlugById,
 } from "./app-context";
 import {
@@ -35,14 +36,14 @@ import {
   userCreateAfter,
   userCreateBefore,
 } from "./database-hooks";
-import { authBeforeHook } from "./hooks-middleware";
+import { authBeforeHook, getAppSlugFromRequest } from "./hooks-middleware";
 import { skipStateMismatch } from "./plugins";
 import { tenancyPlugin } from "./tenancy-plugin";
 import { withTenantScoping } from "./tenant-adapter";
 import { getTenantScope, runWithTenantStore } from "./tenant-context";
 import { withTenantScopedSessions } from "./tenant-secondary-storage";
+import { PROXY_TOKEN_TYPE } from "./verify-jwt";
 
-// Initialize Redis connection
 await redisService.connect();
 const redis = redisService.getClient();
 
@@ -51,8 +52,7 @@ export const auth = betterAuth<BetterAuthOptions>({
 
   emailAndPassword: {
     enabled: true,
-    // Applications decide whether unverified users may sign in; the default
-    // keeps today's behaviour (no verification needed) unless configured.
+    // Whether unverified users may sign in (global for now).
     requireEmailVerification:
       process.env.AU1H_REQUIRE_EMAIL_VERIFICATION === "true",
     resetPasswordTokenExpiresIn: 60 * 60, // 1 hour
@@ -132,6 +132,10 @@ export const auth = betterAuth<BetterAuthOptions>({
   },
 
   advanced: {
+    // The Hono layer sets this header from the socket address (or the trusted
+    // proxy's x-forwarded-for) and strips any client-supplied copy, so the
+    // rate limiter and session IP cannot be chosen by the client.
+    ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
     useSecureCookies: process.env.NODE_ENV === "production",
     defaultCookieAttributes: {
       sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
@@ -156,12 +160,21 @@ export const auth = betterAuth<BetterAuthOptions>({
     },
   }),
 
-  trustedOrigins: async () => {
-    const cache = await fetchAppOrigins();
+  // Origins Better Auth accepts for CSRF checks and callback/redirect URLs:
+  // only the requesting tenant's own origins (admin scope → CORS_ORIGIN).
+  trustedOrigins: async (request) => {
+    const url = new URL(request.url);
+    const slug = await getAppSlugFromRequest(
+      request.headers,
+      Object.fromEntries(url.searchParams)
+    );
+    const origins = await originsForTenant(
+      slug === null || slug === AU1H_ADMIN_APP_SLUG ? null : slug
+    );
     if (process.env.NODE_ENV !== "production") {
-      return [...cache.allOrigins, "http://localhost:*"];
+      return [...origins, "http://localhost:*"];
     }
-    return cache.allOrigins;
+    return origins;
   },
 
   // Better Auth's own limiter on /api/auth/* (its defaults are strict, e.g.
@@ -236,7 +249,8 @@ export const auth = betterAuth<BetterAuthOptions>({
       },
     }),
     admin(),
-    openAPI(),
+    // Interactive API reference at /api/auth/reference; development only.
+    ...(process.env.NODE_ENV === "production" ? [] : [openAPI()]),
     organization({
       // Admin-portal users always get a workspace. Client-application users
       // may create organizations only if the application opted in.
@@ -328,6 +342,9 @@ export async function mintProxyToken(input: {
           email: input.user.email,
           applicationId: input.applicationId,
           aud: input.applicationSlug,
+          // Marks this as gateway proof, not a user access token: SDKs accept
+          // it only in `x-au1h-token` and reject it as a Bearer token.
+          typ: PROXY_TOKEN_TYPE,
           iat: now,
           exp: now + 60,
           req: `${input.method.toUpperCase()} ${input.path}`,

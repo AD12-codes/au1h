@@ -1,4 +1,4 @@
-/** biome-ignore-all lint/style/noMagicNumbers: <not important> */
+/** biome-ignore-all lint/style/noMagicNumbers: cache durations are clearer inline than as named constants */
 import { QueryClient } from "@tanstack/react-query";
 import { DEFAULT_MILLISECONDS } from "./constants";
 
@@ -8,7 +8,7 @@ export const queryClient = new QueryClient({
       // Time in milliseconds that unused/inactive cache data remains in memory
       staleTime: 5 * 60 * DEFAULT_MILLISECONDS, // 5 minutes
       // Time in milliseconds that the cache survives unused/inactive
-      gcTime: 10 * 60 * DEFAULT_MILLISECONDS, // 10 minutes (previously cacheTime)
+      gcTime: 10 * 60 * DEFAULT_MILLISECONDS, // 10 minutes
       // Retry failed requests
       retry: 3,
       // Retry delay

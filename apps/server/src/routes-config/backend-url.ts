@@ -25,6 +25,17 @@ const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 const IPV6_UNIQUE_LOCAL = /^f[cd][0-9a-f]{2}:/; // fc00::/7
 const IPV6_LINK_LOCAL = /^fe[89ab][0-9a-f]:/; // fe80::/10
 const IPV6_MAPPED_IPV4 = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/;
+// WHATWG URL canonicalises `[::ffff:127.0.0.1]` to `[::ffff:7f00:1]`.
+const IPV6_MAPPED_IPV4_HEX = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/;
+
+function mappedHexToDotted(hi: string, lo: string): string {
+  const h = Number.parseInt(hi, 16);
+  const l = Number.parseInt(lo, 16);
+  const byte = 256;
+  return [Math.floor(h / byte), h % byte, Math.floor(l / byte), l % byte].join(
+    "."
+  );
+}
 
 export function isPrivateHostname(hostnameRaw: string): boolean {
   const hostname = hostnameRaw.toLowerCase().replace(/^\[|\]$/g, "");
@@ -39,18 +50,29 @@ export function isPrivateHostname(hostnameRaw: string): boolean {
     return PRIVATE_IPV4.some((re) => re.test(hostname));
   }
   if (hostname.includes(":")) {
-    // IPv6: loopback, unspecified, unique-local (fc00::/7), link-local (fe80::/10),
-    // and IPv4-mapped addresses.
-    if (hostname === "::1" || hostname === "::") {
-      return true;
-    }
-    if (IPV6_UNIQUE_LOCAL.test(hostname) || IPV6_LINK_LOCAL.test(hostname)) {
-      return true;
-    }
-    const mapped = hostname.match(IPV6_MAPPED_IPV4);
-    if (mapped) {
-      return isPrivateHostname(mapped[1]);
-    }
+    return isPrivateIpv6(hostname);
+  }
+  return false;
+}
+
+/**
+ * IPv6: loopback, unspecified, unique-local (fc00::/7), link-local (fe80::/10),
+ * and IPv4-mapped addresses in either spelling.
+ */
+function isPrivateIpv6(hostname: string): boolean {
+  if (hostname === "::1" || hostname === "::") {
+    return true;
+  }
+  if (IPV6_UNIQUE_LOCAL.test(hostname) || IPV6_LINK_LOCAL.test(hostname)) {
+    return true;
+  }
+  const mapped = hostname.match(IPV6_MAPPED_IPV4);
+  if (mapped) {
+    return isPrivateHostname(mapped[1]);
+  }
+  const mappedHex = hostname.match(IPV6_MAPPED_IPV4_HEX);
+  if (mappedHex) {
+    return isPrivateHostname(mappedHexToDotted(mappedHex[1], mappedHex[2]));
   }
   return false;
 }

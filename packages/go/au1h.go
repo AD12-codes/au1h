@@ -79,7 +79,17 @@ func NewVerifier(ctx context.Context, opts Options) (*Verifier, error) {
 }
 
 // Verify validates a raw JWT: signature (EdDSA via JWKS), exp, iss and aud.
+// ProxyTokenType is the `typ` claim of the gateway's x-au1h-token. Such a
+// token proves a request came through au1h; it is never a user access token.
+const ProxyTokenType = "au1h-proxy"
+
+// Verify checks a user access token (from GET /api/auth/token): EdDSA signature
+// against the JWKS, expiry, issuer and audience. A gateway proof token is rejected.
 func (v *Verifier) Verify(ctx context.Context, raw string) (jwt.Token, *User, error) {
+	return v.verify(ctx, raw, false)
+}
+
+func (v *Verifier) verify(ctx context.Context, raw string, expectProxy bool) (jwt.Token, *User, error) {
 	keys, err := v.cache.Get(ctx, v.jwksURL)
 	if err != nil {
 		if keys, err = v.cache.Refresh(ctx, v.jwksURL); err != nil {
@@ -107,6 +117,13 @@ func (v *Verifier) Verify(ctx context.Context, raw string) (jwt.Token, *User, er
 	}
 	if u.ID == "" || u.Email == "" {
 		return nil, nil, &AuthError{Status: http.StatusUnauthorized, Code: "INVALID_TOKEN", Msg: "token is missing sub or email"}
+	}
+	if isProxy := claim(tok, "typ") == ProxyTokenType; isProxy != expectProxy {
+		msg := "a gateway proof token is not an access token"
+		if !isProxy {
+			msg = "x-au1h-token is not a gateway proof token"
+		}
+		return nil, nil, &AuthError{Status: http.StatusUnauthorized, Code: "WRONG_TOKEN_TYPE", Msg: msg}
 	}
 	return tok, u, nil
 }
@@ -186,13 +203,13 @@ func (v *Verifier) RequireProxy(verify bool, next http.Handler) http.Handler {
 				writeAuthError(w, &AuthError{Status: http.StatusUnauthorized, Code: "MISSING_PROXY_TOKEN", Msg: "missing x-au1h-token"})
 				return
 			}
-			tok, _, err := v.Verify(r.Context(), p.ProxyToken)
+			tok, u, err := v.verify(r.Context(), p.ProxyToken, true)
 			if err != nil {
 				writeAuthError(w, err)
 				return
 			}
-			if tok.Subject() != p.User.ID {
-				writeAuthError(w, &AuthError{Status: http.StatusUnauthorized, Code: "PROXY_MISMATCH", Msg: "proxy token does not match x-user-id"})
+			if tok.Subject() != p.User.ID || u.Email != p.User.Email {
+				writeAuthError(w, &AuthError{Status: http.StatusUnauthorized, Code: "PROXY_MISMATCH", Msg: "proxy token does not match x-user-id / x-user-email"})
 				return
 			}
 		}

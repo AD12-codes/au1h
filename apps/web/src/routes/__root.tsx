@@ -9,8 +9,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import "../index.css";
 import { AppShell } from "@/components/layout/app-shell";
 
-// biome-ignore lint/complexity/noBannedTypes: <not important>
-export type RouterAppContext = {};
+export type RouterAppContext = Record<string, never>;
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
   component: RootComponent,

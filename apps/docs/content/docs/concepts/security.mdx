@@ -23,7 +23,18 @@ Tenant scoping lives in the database adapter, below Better Auth, and in the Redi
 cache. Every read, write, update and delete on users, sessions, accounts, organizations,
 members, invitations and verification tokens is confined to the request's application.
 Unit tests cover cross-tenant reads, writes by known id, the admin scope, transactions and
-concurrent interleaved requests.
+concurrent interleaved requests; integration tests against Postgres cover the email flows
+and CORS.
+
+Browser origins are scoped the same way. An application's `allowed origins` grant
+credentialed cross-site access to **that application only**, Better Auth's CSRF and
+callback-URL checks trust only the requesting application's origins, and the admin API
+trusts only `CORS_ORIGIN`. Registering an origin in your workspace cannot be used to drive
+another admin's browser against their workspace. Origins are validated as bare
+`scheme://host[:port]`; no paths or wildcards.
+
+Emailed links (verification, reset, magic link) carry the application and their tokens are
+bound to it; see [Email](/docs/concepts/email).
 
 ## Credentials and secrets
 
@@ -37,13 +48,20 @@ concurrent interleaved requests.
 
 Redis-backed, shared across instances: `/api/v1/*`, `/proxy/*` and `/api/apps/*` by client
 IP (plus app slug where relevant). Better Auth's own limiter protects `/api/auth/*` in
-production. `x-forwarded-for` is honoured only with `AU1H_TRUST_PROXY=true`.
+production. The client IP is the socket address, or with `AU1H_TRUST_PROXY=true` the last
+hop of `x-forwarded-for` (the one your proxy appended); clients cannot choose their own
+bucket, and the same IP is forwarded to backends behind the gateway.
 
 ## Proxy targets
 
 Route backends must be `http(s)` without embedded credentials. In production, loopback,
-private and link-local addresses are refused so au1h cannot be used to reach internal
-services. The check is on the literal hostname; DNS rebinding is not detected.
+private and link-local addresses (including IPv4-mapped IPv6 forms) are refused so au1h
+cannot be used to reach internal services, and backend redirects are relayed to the client
+rather than followed. The check is on the literal hostname; DNS rebinding is not detected.
+
+The gateway's `x-au1h-token` carries `typ: "au1h-proxy"`. The SDKs accept it only as gateway
+proof, compare it against `x-user-id` and `x-user-email`, and reject it as a Bearer token,
+so a user's own access token cannot forge gateway headers.
 
 ## What you must still do
 

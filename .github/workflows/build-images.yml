@@ -1,11 +1,10 @@
 name: Build images
 
-# Builds the server, admin portal and docs images in CI and pushes them to
-# GHCR, so the VPS only pulls finished images (deploy/docker-compose.ghcr.yml).
+# Builds the server, admin portal and docs images and pushes them to GHCR,
+# so a deployment only pulls finished images (deploy/docker-compose.ghcr.yml).
 #
 # Tags: `latest` for main, plus the commit SHA. Optional: set the repository
-# variable AU1H_SERVER_URL (default https://api.au1h.dev) which is baked into
-# the portal, and the secret DOKPLOY_WEBHOOK_URL to trigger a redeploy.
+# secret DEPLOY_WEBHOOK_URL to a URL your host exposes to trigger a redeploy.
 on:
   push:
     branches: [main]
@@ -53,8 +52,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VITE_SERVER_URL=${{ vars.AU1H_SERVER_URL || 'https://api.au1h.dev' }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 
@@ -63,9 +60,9 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ always() && needs.build.result == 'success' }}
     steps:
-      - name: Trigger Dokploy
+      - name: Trigger deploy webhook
         env:
-          URL: ${{ secrets.DOKPLOY_WEBHOOK_URL }}
+          URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
         run: |
-          if [ -z "$URL" ]; then echo "DOKPLOY_WEBHOOK_URL not set; skipping"; exit 0; fi
+          if [ -z "$URL" ]; then echo "DEPLOY_WEBHOOK_URL not set; skipping"; exit 0; fi
           curl -fsS -X POST "$URL"

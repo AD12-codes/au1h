@@ -1,6 +1,7 @@
 import type { Context, Next } from "hono";
 import { getSessionForRequest, mintProxyToken } from "@/lib/auth";
 import { verifyAu1hJwt } from "@/lib/auth/verify-jwt";
+import { clientIp } from "@/middleware/client-ip";
 import { logger } from "@/utils/logger";
 import {
   buildTargetUrl,
@@ -45,6 +46,8 @@ interface ProxyContext {
   proto: string;
   /** Short-lived au1h-signed token proving the hop came through the gateway. */
   proxyToken: string;
+  /** Client IP as determined by au1h (socket, or trusted proxy header). */
+  clientIp: string;
 }
 
 const PROXY_TIMEOUT_MS = Number.parseInt(
@@ -160,11 +163,10 @@ function buildProxyHeaders(
   headers.set("x-forwarded-proto", context.proto);
   headers.set("x-au1h-token", context.proxyToken);
 
-  const clientIp =
-    originalHeaders.get("x-forwarded-for") ||
-    originalHeaders.get("x-real-ip") ||
-    "unknown";
-  headers.set("x-forwarded-for", clientIp);
+  // The client IP as au1h saw it (socket address, or the trusted proxy's
+  // x-forwarded-for), never the caller's own header.
+  headers.set("x-forwarded-for", context.clientIp);
+  headers.delete("x-real-ip");
 
   return headers;
 }
@@ -174,7 +176,7 @@ function buildProxyHeaders(
  * Creates a middleware that proxies requests matching configured routes
  */
 export function createProxyMiddleware(basePath: string) {
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <fix later>
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one linear request pipeline (match → authenticate → forward) reads better unsplit
   return async (c: Context, next: Next) => {
     const appSlug = c.req.header("x-app-id");
 
@@ -259,6 +261,7 @@ export function createProxyMiddleware(basePath: string) {
         appId: route.applicationId,
         appSlug: route.applicationSlug,
         proto: new URL(c.req.url).protocol.replace(":", ""),
+        clientIp: clientIp(c),
         proxyToken: await mintProxyToken({
           applicationId: route.applicationId,
           applicationSlug: route.applicationSlug,
@@ -284,6 +287,10 @@ export function createProxyMiddleware(basePath: string) {
         method,
         headers,
         body,
+        // Relay redirects to the client instead of following them: a backend
+        // answering `302 Location: http://169.254.169.254/` must not turn the
+        // gateway into an SSRF proxy carrying the injected headers.
+        redirect: "manual",
         signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
         // Required by the fetch spec when sending a streaming body.
         ...(body ? { duplex: "half" as const } : {}),
@@ -292,7 +299,8 @@ export function createProxyMiddleware(basePath: string) {
 
       logger.info(
         {
-          targetUrl,
+          // Without the query string: it may carry tokens.
+          target: targetUrl.split("?")[0],
           status: response.status,
           duration,
         },

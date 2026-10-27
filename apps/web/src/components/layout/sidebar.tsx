@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { ShieldIcon, Wordmark } from "@/components/shared/wordmark";
 import { Button } from "@/components/ui/button";
+import { DOCS_URL } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
 
@@ -19,8 +20,6 @@ const NAV = [
   { to: "/users", label: "Users", icon: Users },
   { to: "/tokens", label: "API tokens", icon: KeyRound },
 ] as const;
-
-const SECONDARY = [{ to: "/docs", label: "Docs", icon: BookOpen }] as const;
 
 function NavItem({
   to,
@@ -101,9 +100,19 @@ export function Sidebar() {
               Resources
             </p>
           )}
-          {SECONDARY.map((item) => (
-            <NavItem collapsed={collapsed} key={item.to} {...item} />
-          ))}
+          <a
+            className={cn(
+              "flex h-8 items-center gap-2.5 rounded-md px-2.5 font-medium text-[13px] text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              collapsed && "justify-center px-0"
+            )}
+            href={DOCS_URL}
+            rel="noreferrer"
+            target="_blank"
+            title={collapsed ? "Docs" : undefined}
+          >
+            <BookOpen className="size-4 shrink-0" />
+            {!collapsed && <span className="truncate">Docs</span>}
+          </a>
         </div>
       </nav>
 

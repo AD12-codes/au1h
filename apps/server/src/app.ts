@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { appsRoute } from "./apps/route";
 import { handleAuthRequest } from "./lib/auth/index";
+import { CLIENT_IP_HEADER, clientIp } from "./middleware/client-ip";
 import { dynamicCorsMiddleware } from "./middleware/dynamic-cors";
 import { envInt, rateLimit } from "./middleware/rate-limit";
 import { createProxyMiddleware } from "./proxy/middleware";
@@ -11,6 +12,8 @@ import { routes } from "./routes";
  * `app.fetch` directly. `index.ts` connects the database and serves it.
  */
 export const app = new Hono();
+
+const SLUG = /^[a-z0-9-]{1,64}$/;
 
 // Dynamic CORS - fetches allowed origins from database (applications table)
 app.use("/*", dynamicCorsMiddleware);
@@ -27,19 +30,31 @@ app.use("/api/auth/*", async (c, next) => {
 
   // Store the app slug (including the reserved admin slug) in a cookie so the
   // OAuth callback, which arrives from the provider without our headers, can
-  // recover the tenant.
-  //
-  // This MUST be appended to the final response *after* the handler ran.
-  // Hono's `c.header("Set-Cookie", ...)` before `next()` replaces every
-  // Set-Cookie header on the handler's Response, which silently dropped
-  // Better Auth's session cookie for any request carrying x-app-id.
+  // recover the tenant. Appended after the handler ran: setting it earlier
+  // would replace the handler's own Set-Cookie headers (the session cookie).
+  // Only the slug grammar is accepted, so a client cannot inject attributes.
+  if (!SLUG.test(appId)) {
+    return;
+  }
   c.res.headers.append(
     "Set-Cookie",
     `au1h-app-id=${appId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`
   );
 });
 
-app.on(["POST", "GET"], "/api/auth/*", (c) => handleAuthRequest(c.req.raw));
+// Better Auth reads the client IP from CLIENT_IP_HEADER (rate limiter, session
+// records). Set it here from what au1h itself determined and drop any copy the
+// client sent, so x-forwarded-for spoofing cannot buy fresh rate-limit buckets.
+app.on(["POST", "GET"], "/api/auth/*", (c) => {
+  const headers = new Headers(c.req.raw.headers);
+  headers.set(CLIENT_IP_HEADER, clientIp(c));
+  return handleAuthRequest(
+    new Request(c.req.raw, {
+      headers,
+      ...(c.req.raw.body ? { duplex: "half" as const } : {}),
+    } as RequestInit)
+  );
+});
 
 // Rate limits (Redis-backed, shared across instances). Better Auth applies
 // its own limiter to /api/auth/*.

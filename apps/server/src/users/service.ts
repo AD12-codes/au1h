@@ -204,15 +204,36 @@ export async function getUserSessions(
     .orderBy(desc(sessions.createdAt));
 }
 
+/**
+ * Thrown when an admin-API caller tries to ban or sign out an admin-portal
+ * user (`application_id IS NULL`). Workspace members are peers; removing one
+ * is done through organization membership, not through the end-user tools,
+ * and a ban would lock them out of every workspace they belong to.
+ */
+export class ProtectedUserError extends Error {
+  constructor() {
+    super("Admin-portal users cannot be banned or signed out here");
+    this.name = "ProtectedUserError";
+  }
+}
+
+function assertEndUser(user: { applicationId: string | null }): void {
+  if (user.applicationId === null) {
+    throw new ProtectedUserError();
+  }
+}
+
 export async function banUser(
   organizationId: string,
   id: string,
   reason?: string,
   expiresAt?: Date
 ): Promise<User | null> {
-  if (!(await getUser(organizationId, id))) {
+  const user = await getUser(organizationId, id);
+  if (!user) {
     return null;
   }
+  assertEndUser(user);
   const [updated] = await db
     .update(users)
     .set({
@@ -235,9 +256,11 @@ export async function unbanUser(
   organizationId: string,
   id: string
 ): Promise<User | null> {
-  if (!(await getUser(organizationId, id))) {
+  const user = await getUser(organizationId, id);
+  if (!user) {
     return null;
   }
+  assertEndUser(user);
   const [updated] = await db
     .update(users)
     .set({
@@ -275,9 +298,14 @@ export async function revokeSession(
     .where(eq(sessions.id, sessionId))
     .limit(1);
 
-  if (!(session && (await getUser(organizationId, session.userId)))) {
+  if (!session) {
     return false;
   }
+  const user = await getUser(organizationId, session.userId);
+  if (!user) {
+    return false;
+  }
+  assertEndUser(user);
 
   await db.delete(sessions).where(eq(sessions.id, sessionId));
   await purgeCachedSessions(session.userId, [session.token]);
@@ -288,9 +316,11 @@ export async function revokeAllUserSessions(
   organizationId: string,
   userId: string
 ): Promise<number | null> {
-  if (!(await getUser(organizationId, userId))) {
+  const user = await getUser(organizationId, userId);
+  if (!user) {
     return null;
   }
+  assertEndUser(user);
   const deleted = await db
     .delete(sessions)
     .where(eq(sessions.userId, userId))

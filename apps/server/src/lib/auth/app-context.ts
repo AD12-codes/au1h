@@ -10,7 +10,7 @@ import { logger } from "@/utils/logger";
 // ============================================================================
 interface AppOriginsCache {
   originToSlug: Map<string, string>;
-  allOrigins: string[];
+  originsBySlug: Map<string, string[]>;
   lastFetched: number;
 }
 
@@ -52,21 +52,39 @@ export async function fetchAppOrigins(): Promise<AppOriginsCache> {
     .where(eq(applications.isActive, true));
 
   const originToSlug = new Map<string, string>();
-  const allOrigins: string[] = [];
+  const originsBySlug = new Map<string, string[]>();
 
   for (const app of apps) {
-    for (const origin of splitOrigins(app.allowedOrigins)) {
+    const origins = splitOrigins(app.allowedOrigins);
+    originsBySlug.set(app.slug, origins);
+    for (const origin of origins) {
       originToSlug.set(origin, app.slug);
-      allOrigins.push(origin);
     }
   }
 
-  // Admin portal origin(s) from env: trusted for CORS/cookies, never mapped
-  // to a tenant (the admin portal identifies itself with x-app-id).
-  allOrigins.push(...splitOrigins(process.env.CORS_ORIGIN));
-
-  appOriginsCache = { originToSlug, allOrigins, lastFetched: now };
+  appOriginsCache = { originToSlug, originsBySlug, lastFetched: now };
   return appOriginsCache;
+}
+
+/** The admin portal's origin(s), from `CORS_ORIGIN`. Never mapped to a tenant. */
+export function adminOrigins(): string[] {
+  return splitOrigins(process.env.CORS_ORIGIN);
+}
+
+/**
+ * Origins that may make credentialed requests on behalf of a tenant: the
+ * application's own `allowed_origins`, or the admin portal's for the admin
+ * scope (`slug === null`). Origins are deliberately not pooled across
+ * applications: a workspace that registers `https://evil.example` as one of
+ * its origins must not be able to make credentialed cross-site requests
+ * against other workspaces or applications.
+ */
+export async function originsForTenant(slug: string | null): Promise<string[]> {
+  if (slug === null) {
+    return adminOrigins();
+  }
+  const cache = await fetchAppOrigins();
+  return cache.originsBySlug.get(slug) ?? [];
 }
 
 /** Parse cookies from header string */

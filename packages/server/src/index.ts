@@ -20,6 +20,31 @@ export interface Au1hClaims extends JWTPayload {
   name?: string;
   applicationId?: string | null;
   exp: number;
+  /** Present (as `"au1h-proxy"`) only on the gateway's `x-au1h-token`. */
+  typ?: string;
+}
+
+/** `typ` of the gateway proof token. Never accepted as a user access token. */
+export const PROXY_TOKEN_TYPE = "au1h-proxy";
+
+function assertClaimShape(
+  payload: JWTPayload,
+  expectProxy: boolean
+): Au1hClaims {
+  if (typeof payload.sub !== "string" || typeof payload.email !== "string") {
+    throw new Au1hAuthError("token is missing sub or email");
+  }
+  const isProxy = payload.typ === PROXY_TOKEN_TYPE;
+  if (isProxy !== expectProxy) {
+    throw new Au1hAuthError(
+      isProxy
+        ? "a gateway proof token is not an access token"
+        : "x-au1h-token is not a gateway proof token",
+      401,
+      "WRONG_TOKEN_TYPE"
+    );
+  }
+  return payload as Au1hClaims;
 }
 
 export class Au1hAuthError extends Error {
@@ -56,20 +81,17 @@ export function createVerifier(options: Au1hOptions) {
   const au1hUrl = normalize(options.au1hUrl);
   const jwks = createRemoteJWKSet(new URL(`${au1hUrl}/api/auth/jwks`));
 
-  async function verify(token: string): Promise<Au1hClaims> {
+  async function verifyToken(
+    token: string,
+    expectProxy: boolean
+  ): Promise<Au1hClaims> {
     try {
       const { payload } = await jwtVerify(token, jwks, {
         algorithms: ["EdDSA"],
         issuer: au1hUrl,
         audience: options.appSlug,
       });
-      if (
-        typeof payload.sub !== "string" ||
-        typeof payload.email !== "string"
-      ) {
-        throw new Au1hAuthError("token is missing sub or email");
-      }
-      return payload as Au1hClaims;
+      return assertClaimShape(payload, expectProxy);
     } catch (err) {
       if (err instanceof Au1hAuthError) {
         throw err;
@@ -89,6 +111,11 @@ export function createVerifier(options: Au1hOptions) {
     }
   }
 
+  /** Verify a user access token (from `GET /api/auth/token`). */
+  function verify(token: string): Promise<Au1hClaims> {
+    return verifyToken(token, false);
+  }
+
   /** Verify the `Authorization: Bearer <jwt>` header value. */
   function verifyAuthorization(
     header: string | null | undefined
@@ -105,15 +132,29 @@ export function createVerifier(options: Au1hOptions) {
    * Verify the `x-au1h-token` header the au1h gateway attaches to proxied
    * requests: proof the request came through au1h, without a shared secret.
    */
-  function verifyProxyToken(
-    header: string | null | undefined
+  async function verifyProxyToken(
+    header: string | null | undefined,
+    expected?: { userId: string; email: string }
   ): Promise<Au1hClaims> {
     if (!header) {
-      return Promise.reject(
-        new Au1hAuthError("missing x-au1h-token", 401, "MISSING_PROXY_TOKEN")
+      throw new Au1hAuthError(
+        "missing x-au1h-token",
+        401,
+        "MISSING_PROXY_TOKEN"
       );
     }
-    return verify(header);
+    const claims = await verifyToken(header, true);
+    if (
+      expected &&
+      (claims.sub !== expected.userId || claims.email !== expected.email)
+    ) {
+      throw new Au1hAuthError(
+        "proxy token does not match x-user-id / x-user-email",
+        401,
+        "PROXY_MISMATCH"
+      );
+    }
+    return claims;
   }
 
   return {

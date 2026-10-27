@@ -1,127 +1,79 @@
 ---
 title: Deploy
-description: Run au1h in production with Docker, on Dokploy or any compose host.
+description: Run au1h in production with Docker images, on any host.
 ---
 
-The repository ships a `docker-compose.yml` with five services: the au1h server, the admin
-portal, the docs site, Postgres and Redis. Each app also has its own `Dockerfile` if you
-want to run Postgres and Redis elsewhere.
+au1h is three stateless containers plus Postgres and Redis:
 
-## Hosts
+| Service  | Image                            | Port | Public host (example)          |
+| -------- | -------------------------------- | ---- | ------------------------------ |
+| server   | `ghcr.io/ad12-codes/au1h-server` | 4444 | `api.example.com`              |
+| web      | `ghcr.io/ad12-codes/au1h-web`    | 80   | `app.example.com`              |
+| docs     | `ghcr.io/ad12-codes/au1h-docs`   | 80   | `docs.example.com` (optional)  |
 
-Pick three hostnames and point them at your server. This guide uses:
-
-| Host               | Service      | Container port |
-| ------------------ | ------------ | -------------- |
-| `api.example.com`  | `server`     | 4444           |
-| `app.example.com`  | `web`        | 80             |
-| `docs.example.com` | `docs`       | 80             |
-
-The server URL is **baked into the admin portal at build time** (`VITE_SERVER_URL`), so
-decide it before building.
+Images are built by `.github/workflows/build-images.yml` on every push to `main` and
+tagged `latest` and `sha-<commit>`. Each app also has a `Dockerfile` if you prefer to
+build your own.
 
 ## Variables
 
-Copy `deploy/.env.example` and set:
+The server reads these (full list in the [configuration reference](/docs/reference/configuration)):
 
 | Variable             | Value                                                                 |
 | -------------------- | --------------------------------------------------------------------- |
-| `POSTGRES_PASSWORD`  | Password for the bundled Postgres                                     |
-| `BETTER_AUTH_SECRET` | `openssl rand -base64 48`. Changing it later invalidates sessions and the JWT signing key |
+| `DATABASE_URL`       | `postgresql://user:pass@host:5432/au1h`                               |
+| `REDIS_URL`          | `redis://host:6379`                                                   |
+| `BETTER_AUTH_SECRET` | `openssl rand -base64 48`. Changing it later signs everyone out and re-keys JWTs |
 | `BETTER_AUTH_URL`    | `https://api.example.com`                                             |
 | `CORS_ORIGIN`        | `https://app.example.com`                                             |
 | `AU1H_ADMIN_EMAILS`  | Your email, so you can register additional admins later               |
+| `AU1H_TRUST_PROXY`   | `true` when a reverse proxy sets `x-forwarded-for`                     |
+| `NODE_ENV`           | `production`                                                          |
+| `EMAIL_PROVIDER`     | `smtp` or `resend` plus its credentials, see [Email](/docs/concepts/email) |
 
-The compose file sets `NODE_ENV=production` and `AU1H_TRUST_PROXY=true` (the stack sits
-behind a reverse proxy that sets `x-forwarded-for`).
+The admin portal needs one: `AU1H_SERVER_URL=https://api.example.com`, read when the
+container starts. The docs image needs nothing.
 
-## Prebuilt images (recommended)
+## docker compose
 
-`.github/workflows/build-images.yml` builds all three images on every push to `main` and
-pushes them to GHCR as `ghcr.io/<owner>/au1h-server`, `au1h-web` and `au1h-docs`, tagged
-`latest` and by commit SHA. Your server then only pulls images and never builds. The portal
-image bakes in `AU1H_SERVER_URL` (a repository variable; default `https://api.au1h.dev`).
-
-Use `deploy/docker-compose.ghcr.yml` for that setup. Set `AU1H_IMAGE_TAG` to a commit SHA
-to pin a release, or leave it as `latest`.
-
-## Dokploy: three applications (recommended)
-
-Run each image as its own Dokploy **Application** with **Provider: Docker** and a
-Dokploy-managed database. Nothing is built on the server.
-
-1. **Databases.** Create → Database: a **PostgreSQL 17** (database `au1h`, user `au1h`)
-   and a **Redis**. Note their internal hostnames (shown on each database's page, e.g.
-   `au1h-postgres-abc123`); Dokploy puts all services on one network, so applications reach
-   them by that name on the default port.
-2. **Server.** Create → Application, provider Docker, image
-   `ghcr.io/ad12-codes/au1h-server:latest`. Environment:
-
-   ```
-   NODE_ENV=production
-   PORT=4444
-   DATABASE_URL=postgresql://au1h:<password>@<postgres-host>:5432/au1h
-   REDIS_URL=redis://<redis-host>:6379
-   BETTER_AUTH_SECRET=<openssl rand -base64 48>
-   BETTER_AUTH_URL=https://api.example.com
-   CORS_ORIGIN=https://app.example.com
-   AU1H_ADMIN_EMAILS=you@example.com
-   AU1H_TRUST_PROXY=true
-   ```
-
-   Domain: `api.example.com`, container port **4444**, HTTPS on. Deploy. Migrations run
-   on start.
-3. **Admin portal.** Application, image `ghcr.io/ad12-codes/au1h-web:latest`. No
-   environment needed (the server URL was baked in at build time). Domain
-   `app.example.com`, container port **80**.
-4. **Docs.** Application, image `ghcr.io/ad12-codes/au1h-docs:latest`. Domain
-   `docs.example.com`, container port **80**.
-5. Optional, per application: copy its **webhook URL** into the repository secret
-   `DOKPLOY_WEBHOOK_URL` so a push redeploys it. With three apps, trigger the server's
-   webhook from the workflow and redeploy the others by hand, or add more secrets and
-   steps as you like.
-
-To pin a release, replace `latest` with a commit SHA tag (`sha-<commit>`), which the
-image workflow pushes alongside `latest`.
-
-<Callout type="info">
-  The GHCR packages must be **public** (Package settings → Change visibility) or Dokploy
-  needs a registry credential (Settings → Registry) with `read:packages`.
-</Callout>
-
-## Dokploy: compose
-
-Alternatively, Create → Compose from this repository with compose path
-`deploy/docker-compose.ghcr.yml` (prebuilt images, bundled Postgres and Redis) or
-`docker-compose.yml` (builds on the server). Paste the variables from
-`deploy/.env.example`, add the three domains, deploy.
-
-## Plain docker compose
+Bundled Postgres and Redis, prebuilt images:
 
 ```bash
-cp deploy/.env.example .env     # edit it
-docker compose up -d --build
+git clone https://github.com/AD12-codes/au1h && cd au1h
+cp deploy/.env.example .env            # edit
+docker compose -f deploy/docker-compose.ghcr.yml up -d
 ```
 
-Put a reverse proxy (Caddy, Traefik, nginx) in front, terminating TLS and forwarding each
-host to the service's port.
+`docker-compose.yml` at the repository root is the same stack built from source. Put a
+reverse proxy (Caddy, Traefik, nginx) in front, terminating TLS and forwarding each host
+to its service. Set `AU1H_IMAGE_TAG` to a `sha-<commit>` tag to pin a release.
+
+## Any container platform
+
+On a platform that runs Docker images (Coolify, Dokploy, Railway, Fly, Render, Kubernetes),
+create three services from the images above, attach a Postgres and a Redis, and set the
+variables. The server applies migrations on start, so there is no separate migration
+step. Only the server needs the database; the portal and docs are static files behind
+nginx.
+
+<Callout type="info">
+  The GHCR packages are public. If you publish your own, either make them public or give
+  your platform a registry credential with `read:packages`.
+</Callout>
 
 ## First run
 
 Open `https://app.example.com/register`. The first account becomes an admin; after that,
 sign-up requires `AU1H_ADMIN_EMAILS` or a workspace invitation. Then register your first
-application.
+application and copy its slug.
 
 ## Updating
 
-Pull and redeploy. Migrations are applied automatically by the server on start
-(`bun run start` runs `src/db/migrate.ts` first). Back up the `postgres-data` volume
-before major upgrades.
+Pull the new image and restart. Migrations run on start and are additive. Back up
+Postgres before major upgrades.
 
-## What is not in the box
+## Scaling and backups
 
-- **Email** for verification and password reset: not wired yet.
-- **Backups**: the bundled Postgres has no backup job; use Dokploy's database backups
-  or your own.
-- **Scaling**: one server container is plenty for most setups. Several can run behind
-  the same Postgres and Redis; caches and rate limits are shared through Redis.
+One server container is plenty for most deployments. Several can run behind the same
+Postgres and Redis; caches and rate limits are shared through Redis. Postgres holds all
+state, so back it up; Redis can be rebuilt (sessions are re-read from Postgres).

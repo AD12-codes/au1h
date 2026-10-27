@@ -23,7 +23,7 @@ const PUBLIC_PATHS = new Set(["/jwks", "/ok"]);
  * The admin portal is not special here: it sends `x-app-id: au1h-admin` like
  * any other client. Origin/Referer are never used to grant the admin scope.
  */
-async function getAppSlugFromRequest(
+export async function getAppSlugFromRequest(
   headers: Headers | undefined,
   query: Record<string, unknown> | undefined
 ): Promise<string | null> {

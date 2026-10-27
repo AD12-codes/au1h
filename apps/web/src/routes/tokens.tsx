@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/table";
 import { useCreateToken, useRevokeToken, useTokens } from "@/hooks/use-tokens";
 import { authClient } from "@/lib/auth-client";
+import { SERVER_URL } from "@/lib/config";
 
 export const Route = createFileRoute("/tokens")({
   component: TokensPage,
@@ -52,8 +53,6 @@ const EXPIRY_OPTIONS = [
   { value: "365", label: "1 year" },
   { value: "never", label: "No expiry" },
 ];
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL as string;
 
 function CreateTokenDialog({
   open,

@@ -1,11 +1,12 @@
 import { CopyField } from "@/components/shared/copy-field";
+import { SERVER_URL } from "@/lib/config";
 
 interface IntegrationSectionProps {
   applicationId: string;
   slug: string;
 }
 
-const AU1H_URL = import.meta.env.VITE_SERVER_URL as string;
+const AU1H_URL = SERVER_URL;
 
 export function IntegrationSection({
   applicationId,

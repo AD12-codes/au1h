@@ -1,17 +1,9 @@
 import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
-import { fetchAppOrigins } from "@/lib/auth/app-context";
+import { AU1H_ADMIN_APP_SLUG } from "@/lib/auth/admin";
+import { adminOrigins, originsForTenant } from "@/lib/auth/app-context";
+import { getAppSlugFromRequest } from "@/lib/auth/hooks-middleware";
 import { invalidateCache } from "@/utils/cache-bus";
-
-/**
- * Allowed CORS origins: every active application's `allowed_origins` plus the
- * admin portal origin(s) from `CORS_ORIGIN`. Shares the cache (and its
- * cross-instance invalidation) with the auth layer's trusted origins.
- */
-async function fetchAllowedOrigins(): Promise<Set<string>> {
-  const cache = await fetchAppOrigins();
-  return new Set(cache.allOrigins);
-}
 
 /**
  * Invalidate the origins cache on every instance (call when applications change).
@@ -20,19 +12,40 @@ export function invalidateOriginsCache(): void {
   invalidateCache("applications");
 }
 
+/**
+ * Which origins may make a credentialed cross-site request *for this tenant*?
+ *
+ * - `/api/v1/*` is the admin API: only the admin portal's origin.
+ * - Otherwise the tenant is resolved exactly as the auth layer resolves it
+ *   (`x-app-id`, `?app=`, cookie, Origin) and only that application's own
+ *   origins are allowed; the admin slug maps to the portal's origin.
+ *
+ * Pooling every application's origins into one allowlist would let any
+ * workspace register an attacker origin and then drive another admin's
+ * browser against the admin API with their cookie.
+ */
+async function allowedOriginsFor(c: Context): Promise<string[]> {
+  if (c.req.path.startsWith("/api/v1")) {
+    return adminOrigins();
+  }
+  const slug = await getAppSlugFromRequest(c.req.raw.headers, c.req.query());
+  if (slug === null) {
+    return [];
+  }
+  return await originsForTenant(slug === AU1H_ADMIN_APP_SLUG ? null : slug);
+}
+
 export async function dynamicCorsMiddleware(c: Context, next: Next) {
   const origin = c.req.header("Origin");
 
-  // If no origin, proceed without CORS headers
+  // Same-origin or non-browser request: no CORS headers needed.
   if (!origin) {
     return next();
   }
 
-  const allowedOrigins = await fetchAllowedOrigins();
-
-  // Check if origin is allowed
+  const allowed = await allowedOriginsFor(c);
   const isAllowed =
-    allowedOrigins.has(origin) ||
+    allowed.includes(origin) ||
     // In development, allow all localhost origins
     (process.env.NODE_ENV !== "production" &&
       origin.startsWith("http://localhost"));
@@ -45,7 +58,6 @@ export async function dynamicCorsMiddleware(c: Context, next: Next) {
     return next();
   }
 
-  // Use Hono's cors middleware with the validated origin
   const corsMiddleware = cors({
     origin,
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],

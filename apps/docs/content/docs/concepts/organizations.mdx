@@ -11,7 +11,7 @@ is Better Auth's organization plugin, scoped per application by au1h.
 
 A person is **one user per application**, and may belong to any number of organizations
 within it. Inviting an existing user adds a membership; it never creates a second account
-and never fails because "the email already exists". `ad@gmail.com` can be an individual
+and never fails because "the email already exists". `alice@example.com` can be an individual
 user and a member of a client's organization at the same time.
 
 Organizations, memberships and invitations are isolated per application. The slug `acme`
@@ -31,7 +31,7 @@ export const auth = createAu1hClient({
 });
 
 await auth.organization.create({ name: "Acme", slug: "acme" }); // becomes active
-await auth.organization.inviteMember({ email: "ad@gmail.com", role: "member" });
+await auth.organization.inviteMember({ email: "alice@example.com", role: "member" });
 await auth.organization.setActive({ organizationId });
 const { data } = await auth.getSession();  // data.session.activeOrganizationId
 ```

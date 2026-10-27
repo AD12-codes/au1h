@@ -65,3 +65,14 @@ describe("validateBackendUrl", () => {
     expect(validateBackendUrl("https://api.example.com/v1", strict)).toBeNull();
   });
 });
+
+describe("IPv4-mapped IPv6 backends", () => {
+  test("are private in dotted and in WHATWG canonical hex form", () => {
+    expect(isPrivateHostname("::ffff:127.0.0.1")).toBe(true);
+    expect(isPrivateHostname("[::ffff:7f00:1]")).toBe(true);
+    expect(
+      isPrivateHostname(new URL("http://[::ffff:169.254.169.254]/").hostname)
+    ).toBe(true);
+    expect(isPrivateHostname("[::ffff:808:808]")).toBe(false); // 8.8.8.8
+  });
+});

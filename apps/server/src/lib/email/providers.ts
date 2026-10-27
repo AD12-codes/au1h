@@ -6,13 +6,25 @@ import type { EmailMessage, EmailProvider } from "./types";
  * Development default: no mail leaves the machine; the message (with its
  * link or code) is written to the log so the flow can be completed by hand.
  */
+/**
+ * Logs each message instead of sending it. In production the body (which
+ * holds links and codes) is withheld, and a warning is logged at startup via
+ * `providerFromEnv`, because this is almost certainly a misconfiguration.
+ */
 export const consoleProvider: EmailProvider = {
   name: "console",
   send(message) {
-    logger.info(
-      { to: message.to, subject: message.subject, body: message.text },
-      "EMAIL (console provider; set EMAIL_PROVIDER to deliver for real)"
-    );
+    if (process.env.NODE_ENV === "production") {
+      logger.warn(
+        { to: message.to, subject: message.subject },
+        "EMAIL not sent: EMAIL_PROVIDER is console (body withheld in production)"
+      );
+    } else {
+      logger.info(
+        { to: message.to, subject: message.subject, body: message.text },
+        "EMAIL (console provider; set EMAIL_PROVIDER to deliver for real)"
+      );
+    }
     return Promise.resolve();
   },
 };
@@ -105,6 +117,11 @@ export function providerFromEnv(): EmailProvider {
     case "memory":
       return memoryProvider;
     case "console":
+      if (process.env.NODE_ENV === "production") {
+        logger.warn(
+          "EMAIL_PROVIDER is console in production: verification, reset, magic-link and OTP emails will NOT be delivered"
+        );
+      }
       return consoleProvider;
     default:
       throw new Error(

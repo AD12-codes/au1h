@@ -13,6 +13,45 @@ import {
   updateApplication,
 } from "./service";
 
+/**
+ * Each item must be exactly an origin (`scheme://host[:port]`). These feed
+ * CORS and Better Auth's trusted-origin check, where a path, a wildcard or a
+ * stray character would widen what is trusted.
+ */
+function splitList(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+
+function asOrigin(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const bare = url.origin;
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    // Exactly the origin, with or without a trailing slash.
+    return value === bare || value === `${bare}/` ? bare : null;
+  } catch {
+    return null;
+  }
+}
+
+function isOriginList(raw: string | undefined): boolean {
+  return raw === undefined || splitList(raw).every((o) => asOrigin(o) !== null);
+}
+
+/** `https://a.example/, https://b.example` → `https://a.example,https://b.example` */
+function normalizeOriginList(raw: string | undefined): string | undefined {
+  return raw === undefined
+    ? undefined
+    : splitList(raw)
+        .map((o) => asOrigin(o) ?? o)
+        .join(",");
+}
+
 const createAppSchema = z.object({
   name: z.string().min(1).max(100),
   slug: z
@@ -23,9 +62,21 @@ const createAppSchema = z.object({
     .refine((slug) => slug !== AU1H_ADMIN_APP_SLUG, {
       message: `"${AU1H_ADMIN_APP_SLUG}" is reserved for the au1h admin portal`,
     }),
-  allowedOrigins: z.string().optional(),
+  allowedOrigins: z
+    .string()
+    .optional()
+    .refine(isOriginList, {
+      message:
+        "allowedOrigins must be comma-separated origins like https://app.example.com (no paths, no wildcards)",
+    })
+    .transform(normalizeOriginList),
   redirectUris: z.string().optional(),
-  logo: z.string().url().optional().nullable(),
+  logo: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith("https://"), { message: "logo must be https" })
+    .optional()
+    .nullable(),
   metadata: z.string().optional(),
 });
 

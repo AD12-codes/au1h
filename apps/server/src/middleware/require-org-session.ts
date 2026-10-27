@@ -1,4 +1,7 @@
+import { and, eq } from "drizzle-orm";
 import type { Context, Next } from "hono";
+import { db } from "@/db";
+import { members } from "@/db/schema/auth";
 import { getAdminSession } from "@/lib/auth";
 import { resolveToken, TOKEN_PREFIX } from "@/tokens/service";
 import { logger } from "@/utils/logger";
@@ -66,6 +69,25 @@ export async function requireOrgSession(c: Context<AdminEnv>, next: Next) {
   if (!activeOrganizationId) {
     return c.json(
       { error: "No active organization. Please select an organization." },
+      403
+    );
+  }
+
+  // The session's active workspace is a snapshot; the caller must still be a
+  // member, or a removed admin would keep API access until the session expires.
+  const [membership] = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(
+      and(
+        eq(members.userId, session.user.id),
+        eq(members.organizationId, activeOrganizationId)
+      )
+    )
+    .limit(1);
+  if (!membership) {
+    return c.json(
+      { error: "You are no longer a member of this workspace" },
       403
     );
   }
