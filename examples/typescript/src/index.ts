@@ -1,67 +1,33 @@
+import { createVerifier } from "@au1h/server";
+import { type Au1hEnv, requireAu1hUser } from "@au1h/server/hono";
 import { file } from "bun";
 import { Hono } from "hono";
-import { createRemoteJWKSet, errors, type JWTPayload, jwtVerify } from "jose";
 
 const PORT = Number(process.env.PORT ?? 8084);
-const AU1H_URL = (process.env.AU1H_URL ?? "http://localhost:4444").replace(
-  /\/$/,
-  ""
-);
+const AU1H_URL = process.env.AU1H_URL ?? "http://localhost:4444";
 const APP_SLUG = process.env.AU1H_APP_SLUG ?? "example-typescript";
 
-// au1h publishes its signing keys (Ed25519 / EdDSA) at /api/auth/jwks.
-// createRemoteJWKSet fetches lazily and caches; unknown `kid`s trigger a refetch.
-const JWKS = createRemoteJWKSet(new URL(`${AU1H_URL}/api/auth/jwks`));
+// Verifies au1h JWTs against the public JWKS: EdDSA signature, exp,
+// iss = au1h, aud = this application's slug.
+const au1h = createVerifier({ au1hUrl: AU1H_URL, appSlug: APP_SLUG });
 
-type Au1hClaims = JWTPayload & {
-  email: string;
-  name?: string;
-  applicationId?: string;
-};
-
-async function verifyAu1hToken(token: string): Promise<Au1hClaims> {
-  // `aud` is the application slug: a token minted for another au1h application
-  // fails here, so no separate tenant check is needed.
-  const { payload } = await jwtVerify(token, JWKS, {
-    algorithms: ["EdDSA"],
-    issuer: AU1H_URL,
-    audience: APP_SLUG,
-  });
-  return payload as Au1hClaims;
-}
-
-const app = new Hono();
+const app = new Hono<Au1hEnv>();
 
 app.get("/", () => new Response(file("index.html")));
 app.get("/health", (c) => c.json({ status: "ok" }));
 app.get("/api/config", (c) =>
-  c.json({ language: "typescript", au1hUrl: AU1H_URL, appSlug: APP_SLUG })
+  c.json({ language: "typescript", au1hUrl: au1h.au1hUrl, appSlug: APP_SLUG })
 );
 
-app.get("/api/me", async (c) => {
-  const header = c.req.header("authorization") ?? "";
-  if (!header.startsWith("Bearer ")) {
-    return c.json({ error: "missing bearer token" }, 401);
-  }
-
-  let claims: Au1hClaims;
-  try {
-    claims = await verifyAu1hToken(header.slice("Bearer ".length));
-  } catch (err) {
-    const reason = err instanceof errors.JOSEError ? err.code : "invalid token";
-    return c.json({ error: `invalid token: ${reason}` }, 401);
-  }
-
-
+// Everything under /api/me requires a valid au1h token for this app.
+app.use("/api/me", requireAu1hUser(au1h));
+app.get("/api/me", (c) => {
+  const user = c.get("au1hUser");
+  const claims = c.get("au1hClaims");
   return c.json({
     language: "typescript",
-    library: "jose",
-    user: {
-      id: claims.sub,
-      email: claims.email,
-      name: claims.name ?? null,
-      applicationId: claims.applicationId ?? null,
-    },
+    library: "@au1h/server (jose)",
+    user,
     token: {
       issuer: claims.iss,
       audience: claims.aud,

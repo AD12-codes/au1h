@@ -1,10 +1,13 @@
 [project]
 name = "au1h-example-python"
 version = "0.1.0"
-description = "au1h example backend: FastAPI + PyJWT"
+description = "au1h example backend: FastAPI + the au1h Python SDK"
 requires-python = ">=3.10"
 dependencies = [
+    "au1h[fastapi]",
     "fastapi>=0.115",
     "uvicorn>=0.30",
-    "pyjwt[crypto]>=2.9",
 ]
+
+[tool.uv.sources]
+au1h = { path = "../../packages/python", editable = true }

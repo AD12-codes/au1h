@@ -20,10 +20,15 @@
       "!**/.svelte-kit",
       "!**/wrangler.jsonc",
       "!**/.source",
-      "!**/node_modules"
+      "!**/node_modules",
+      "!apps/docs/**",
+      "!**/out"
     ]
   },
-  "extends": ["ultracite/core", "ultracite/react"],
+  "extends": [
+    "ultracite/core",
+    "ultracite/react"
+  ],
   "linter": {
     "rules": {
       "style": {
@@ -34,5 +39,23 @@
         "noNamespaceImport": "off"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "packages/**"
+      ],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          },
+          "style": {
+            "noParameterProperties": "off",
+            "useConsistentMemberAccessibility": "off"
+          }
+        }
+      }
+    }
+  ]
 }

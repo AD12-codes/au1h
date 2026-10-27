@@ -53,3 +53,8 @@ dump.rdb
 
 # local, uncommitted notes
 *.local.md
+
+# docs site build
+apps/docs/out/
+apps/docs/.source/
+apps/docs/.next/

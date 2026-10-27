@@ -1,2 +1,4 @@
 [install]
-linker = "isolated"
+# hoisted: fumadocs-mdx and the docs app must share one fumadocs-core copy for its
+# macro types to line up; the isolated linker gives them two.
+linker = "hoisted"

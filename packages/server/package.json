@@ -1,0 +1,51 @@
+{
+  "name": "@au1h/server",
+  "version": "0.1.0",
+  "description": "Backend SDK for au1h: verify au1h JWTs, read gateway headers, and call the server-to-server API. Hono and Express middleware included.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    },
+    "./hono": {
+      "types": "./dist/hono.d.mts",
+      "import": "./dist/hono.mjs"
+    },
+    "./express": {
+      "types": "./dist/express.d.mts",
+      "import": "./dist/express.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check-types": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "jose": "^6.0.11"
+  },
+  "peerDependencies": {
+    "hono": ">=4",
+    "express": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "hono": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "hono": "^4.8.2",
+    "tsdown": "0.16.2",
+    "typescript": "5.9.3"
+  }
+}

@@ -19,6 +19,8 @@ product's API traffic to its backend with verified user context attached.
 | --------------- | -------------------------------------------------------------------- |
 | `apps/server`   | Hono + Bun API: Better Auth, tenant-scoped adapter, admin API, proxy  |
 | `apps/web`      | Admin portal (React, TanStack Router, shadcn/ui), port 4445           |
+| `apps/docs`     | Documentation site (Fumadocs, static export), port 4446               |
+| `packages/*`    | SDKs: `@au1h/client`, `@au1h/server` (Hono/Express), Go module, Python package |
 | `examples/`     | Minimal Go, Rust, Python and TypeScript backends + demo pages         |
 | `docs/`         | `ARCHITECTURE.md` (design + status), `INTEGRATION.md` (how to use it) |
 
@@ -41,7 +43,7 @@ cd apps/server && bun run db:migrate    # or: bun run db:push
 Run both apps:
 
 ```bash
-bun run dev            # server on http://localhost:4444, admin portal on http://localhost:4445
+bun run dev            # server :4444, admin portal :4445, docs :4446
 ```
 
 Open the admin portal and register. The very first admin account is created freely; after
@@ -62,6 +64,8 @@ cd apps/server && bun run db:generate   # new migration from schema changes
 
 ## Where to read next
 
+- `apps/docs` (http://localhost:4446 with `bun run dev`) — the documentation site:
+  concepts, SDKs, API reference.
 - `docs/ARCHITECTURE.md` — how tenancy works, request flow, and the current status of
   every known issue.
 - `docs/INTEGRATION.md` — client and backend integration in TypeScript, Go and Python.

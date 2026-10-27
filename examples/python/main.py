@@ -1,4 +1,4 @@
-"""au1h example backend in Python (FastAPI + PyJWT).
+"""au1h example backend in Python (FastAPI + the au1h SDK).
 
 Serves the demo page and one protected endpoint, GET /api/me, which verifies
 the JWT minted by au1h (EdDSA / Ed25519) against au1h's JWKS and echoes the
@@ -8,43 +8,20 @@ verified user claims back.
 import os
 from pathlib import Path
 
-import jwt
+from au1h import User, Verifier
+from au1h.fastapi import require_user
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
-from jwt import PyJWKClient
+from fastapi.responses import FileResponse, JSONResponse
 
 AU1H_URL = os.environ.get("AU1H_URL", "http://localhost:4444").rstrip("/")
 APP_SLUG = os.environ.get("AU1H_APP_SLUG", "example-python")
 PORT = int(os.environ.get("PORT", "8083"))
 
-# PyJWKClient fetches and caches au1h's signing keys; unknown kids trigger a refetch.
-jwks_client = PyJWKClient(f"{AU1H_URL}/api/auth/jwks", cache_keys=True)
+# Verifies au1h JWTs: EdDSA signature via JWKS, exp, iss = au1h, aud = APP_SLUG.
+au1h = Verifier(AU1H_URL, APP_SLUG)
+current_user = require_user(au1h)
 
 app = FastAPI(title="au1h example · Python")
-
-
-def current_claims(request: Request) -> dict:
-    """Extract and verify the bearer token; returns the JWT claims."""
-    auth = request.headers.get("authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="missing bearer token")
-    token = auth[len("Bearer ") :]
-
-    try:
-        signing_key = jwks_client.get_signing_key_from_jwt(token)
-        claims = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["EdDSA"],
-            issuer=AU1H_URL,
-            # `aud` is this application's slug: a token minted for another au1h
-            # application fails here.
-            audience=APP_SLUG,
-        )
-    except jwt.PyJWTError as exc:
-        raise HTTPException(status_code=401, detail=f"invalid token: {exc}") from exc
-
-    return claims
 
 
 @app.get("/")
@@ -63,15 +40,16 @@ def config():
 
 
 @app.get("/api/me")
-def me(claims: dict = Depends(current_claims)):
+def me(request: Request, user: User = Depends(current_user)):
+    claims = au1h.verify_authorization(request.headers.get("authorization"))
     return {
         "language": "python",
-        "library": "PyJWT",
+        "library": "au1h (PyJWT)",
         "user": {
-            "id": claims.get("sub"),
-            "email": claims.get("email"),
-            "name": claims.get("name"),
-            "applicationId": claims.get("applicationId"),
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "applicationId": user.application_id,
         },
         "token": {
             "issuer": claims.get("iss"),
@@ -82,12 +60,12 @@ def me(claims: dict = Depends(current_claims)):
     }
 
 
-# The demo page expects `{"error": "..."}`; FastAPI's default is `{"detail": "..."}`.
+# The demo page expects `{"error": "..."}`; the SDK raises HTTPException with
+# detail={"error", "code"}; flatten it.
 @app.exception_handler(HTTPException)
 async def http_exception_handler(_: Request, exc: HTTPException):
-    from fastapi.responses import JSONResponse
-
-    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+    detail = exc.detail if isinstance(exc.detail, dict) else {"error": exc.detail}
+    return JSONResponse(status_code=exc.status_code, content=detail)
 
 
 if __name__ == "__main__":
