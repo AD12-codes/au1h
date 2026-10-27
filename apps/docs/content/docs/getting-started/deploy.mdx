@@ -45,20 +45,56 @@ image bakes in `AU1H_SERVER_URL` (a repository variable; default `https://api.au
 Use `deploy/docker-compose.ghcr.yml` for that setup. Set `AU1H_IMAGE_TAG` to a commit SHA
 to pin a release, or leave it as `latest`.
 
-## Dokploy
+## Dokploy: three applications (recommended)
 
-1. **Create → Compose**, source: this Git repository, compose path
-   `deploy/docker-compose.ghcr.yml` (or `docker-compose.yml` to build on the server).
-2. **Environment**: paste the variables above.
-3. **Domains**: add one per service: `api.example.com → server:4444`,
-   `app.example.com → web:80`, `docs.example.com → docs:80`, HTTPS on. Dokploy's Traefik
-   issues the certificates.
-4. **Deploy.** The server container applies database migrations on start, then listens.
-5. Optional: copy the service's **webhook URL** into the repository secret
-   `DOKPLOY_WEBHOOK_URL`. The image workflow then triggers a redeploy after each push.
+Run each image as its own Dokploy **Application** with **Provider: Docker** and a
+Dokploy-managed database. Nothing is built on the server.
 
-If your DNS is proxied through Cloudflare, set its SSL mode to **Full (strict)** so the
-origin certificate is verified, and keep the records proxied or DNS-only consistently.
+1. **Databases.** Create → Database: a **PostgreSQL 17** (database `au1h`, user `au1h`)
+   and a **Redis**. Note their internal hostnames (shown on each database's page, e.g.
+   `au1h-postgres-abc123`); Dokploy puts all services on one network, so applications reach
+   them by that name on the default port.
+2. **Server.** Create → Application, provider Docker, image
+   `ghcr.io/ad12-codes/au1h-server:latest`. Environment:
+
+   ```
+   NODE_ENV=production
+   PORT=4444
+   DATABASE_URL=postgresql://au1h:<password>@<postgres-host>:5432/au1h
+   REDIS_URL=redis://<redis-host>:6379
+   BETTER_AUTH_SECRET=<openssl rand -base64 48>
+   BETTER_AUTH_URL=https://api.example.com
+   CORS_ORIGIN=https://app.example.com
+   AU1H_ADMIN_EMAILS=you@example.com
+   AU1H_TRUST_PROXY=true
+   ```
+
+   Domain: `api.example.com`, container port **4444**, HTTPS on. Deploy. Migrations run
+   on start.
+3. **Admin portal.** Application, image `ghcr.io/ad12-codes/au1h-web:latest`. No
+   environment needed (the server URL was baked in at build time). Domain
+   `app.example.com`, container port **80**.
+4. **Docs.** Application, image `ghcr.io/ad12-codes/au1h-docs:latest`. Domain
+   `docs.example.com`, container port **80**.
+5. Optional, per application: copy its **webhook URL** into the repository secret
+   `DOKPLOY_WEBHOOK_URL` so a push redeploys it. With three apps, trigger the server's
+   webhook from the workflow and redeploy the others by hand, or add more secrets and
+   steps as you like.
+
+To pin a release, replace `latest` with a commit SHA tag (`sha-<commit>`), which the
+image workflow pushes alongside `latest`.
+
+<Callout type="info">
+  The GHCR packages must be **public** (Package settings → Change visibility) or Dokploy
+  needs a registry credential (Settings → Registry) with `read:packages`.
+</Callout>
+
+## Dokploy: compose
+
+Alternatively, Create → Compose from this repository with compose path
+`deploy/docker-compose.ghcr.yml` (prebuilt images, bundled Postgres and Redis) or
+`docker-compose.yml` (builds on the server). Paste the variables from
+`deploy/.env.example`, add the three domains, deploy.
 
 ## Plain docker compose
 
