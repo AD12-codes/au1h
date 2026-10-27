@@ -7,6 +7,7 @@ import {
   getUser,
   getUserSessions,
   listUsers,
+  ProtectedUserError,
   revokeAllUserSessions,
   revokeSession,
   unbanUser,
@@ -39,6 +40,9 @@ export async function list(c: Context<AdminEnv>) {
     const result = await listUsers(c.get("organizationId"), parsed.data);
     return c.json(result);
   } catch (error) {
+    if (error instanceof ProtectedUserError) {
+      return c.json({ error: error.message }, 403);
+    }
     logger.error({ error }, "Failed to list users");
     return c.json({ error: "Failed to list users" }, 500);
   }
@@ -55,6 +59,9 @@ export async function get(c: Context<AdminEnv>) {
 
     return c.json({ user });
   } catch (error) {
+    if (error instanceof ProtectedUserError) {
+      return c.json({ error: error.message }, 403);
+    }
     logger.error({ error }, "Failed to get user");
     return c.json({ error: "Failed to get user" }, 500);
   }
@@ -69,6 +76,9 @@ export async function getSessions(c: Context<AdminEnv>) {
     }
     return c.json({ sessions: userSessions });
   } catch (error) {
+    if (error instanceof ProtectedUserError) {
+      return c.json({ error: error.message }, 403);
+    }
     logger.error({ error }, "Failed to get user sessions");
     return c.json({ error: "Failed to get user sessions" }, 500);
   }
@@ -106,6 +116,9 @@ export async function ban(c: Context<AdminEnv>) {
 
     return c.json({ user });
   } catch (error) {
+    if (error instanceof ProtectedUserError) {
+      return c.json({ error: error.message }, 403);
+    }
     logger.error({ error }, "Failed to ban user");
     return c.json({ error: "Failed to ban user" }, 500);
   }
@@ -124,6 +137,9 @@ export async function unban(c: Context<AdminEnv>) {
 
     return c.json({ user });
   } catch (error) {
+    if (error instanceof ProtectedUserError) {
+      return c.json({ error: error.message }, 403);
+    }
     logger.error({ error }, "Failed to unban user");
     return c.json({ error: "Failed to unban user" }, 500);
   }
@@ -142,6 +158,9 @@ export async function revokeUserSession(c: Context<AdminEnv>) {
 
     return c.json({ success: true });
   } catch (error) {
+    if (error instanceof ProtectedUserError) {
+      return c.json({ error: error.message }, 403);
+    }
     logger.error({ error }, "Failed to revoke session");
     return c.json({ error: "Failed to revoke session" }, 500);
   }
@@ -159,6 +178,9 @@ export async function revokeAllSessions(c: Context<AdminEnv>) {
 
     return c.json({ success: true, count });
   } catch (error) {
+    if (error instanceof ProtectedUserError) {
+      return c.json({ error: error.message }, 403);
+    }
     logger.error({ error }, "Failed to revoke all sessions");
     return c.json({ error: "Failed to revoke all sessions" }, 500);
   }

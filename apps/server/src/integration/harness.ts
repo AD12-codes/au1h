@@ -41,7 +41,7 @@ export async function startHarness(): Promise<Harness> {
   process.env.BETTER_AUTH_SECRET ??= "integration-test-secret-not-for-prod";
 
   const { migrate } = await import("drizzle-orm/node-postgres/migrator");
-  const { closeDatabase, db, initializeDatabase } = await import("../db");
+  const { db, initializeDatabase } = await import("../db");
   await initializeDatabase();
   await migrate(db, {
     migrationsFolder: new URL("../db/migrations", import.meta.url).pathname,
@@ -54,7 +54,6 @@ export async function startHarness(): Promise<Harness> {
   const { createApplication } = await import("../applications/service");
   const { clearOutbox, getOutbox } = await import("../lib/email/providers");
   const { app } = await import("../app");
-  const { redisService } = await import("../utils/redis");
 
   const run = Math.random().toString(36).slice(2, 8);
   const orgId = crypto.randomUUID();
@@ -106,8 +105,8 @@ export async function startHarness(): Promise<Harness> {
       await db
         .delete(applications)
         .where(eq(applications.organizationId, orgId));
-      await closeDatabase();
-      await redisService.disconnect();
+      // The pool and the Redis client are process-wide singletons shared by
+      // every test file in this run, so they stay open; bun exits regardless.
     },
   };
 }

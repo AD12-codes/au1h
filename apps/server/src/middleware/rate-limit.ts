@@ -1,7 +1,7 @@
 import type { Context, Next } from "hono";
-import { getConnInfo } from "hono/bun";
 import { logger } from "@/utils/logger";
 import { redisService } from "@/utils/redis";
+import { clientIp } from "./client-ip";
 
 export interface RateLimitOptions {
   /** Namespace for the Redis keys, e.g. "admin-api". */
@@ -11,25 +11,6 @@ export interface RateLimitOptions {
   windowSeconds: number;
   /** Extra key material beyond the client IP (e.g. the app slug). */
   keyFor?: (c: Context) => string;
-}
-
-/**
- * Client IP. `x-forwarded-for` is only honoured when au1h is told it sits
- * behind a trusted proxy (`AU1H_TRUST_PROXY=true`); otherwise the socket
- * address is used, so a client cannot pick its own bucket.
- */
-export function clientIp(c: Context): string {
-  if (process.env.AU1H_TRUST_PROXY === "true") {
-    const forwarded = c.req.header("x-forwarded-for");
-    if (forwarded) {
-      return forwarded.split(",")[0].trim();
-    }
-  }
-  try {
-    return getConnInfo(c).remote.address ?? "unknown";
-  } catch {
-    return "unknown";
-  }
 }
 
 /**

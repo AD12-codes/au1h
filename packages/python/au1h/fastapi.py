@@ -50,8 +50,8 @@ def require_proxy(verifier: Verifier | None = None) -> Callable[[Request], Proxy
                 claims = verifier.verify_proxy_token(ctx.proxy_token)
             except AuthError as exc:
                 raise _http(exc) from exc
-            if claims["sub"] != ctx.user.id:
-                raise _http(AuthError("proxy token does not match x-user-id", 401, "PROXY_MISMATCH"))
+            if claims["sub"] != ctx.user.id or claims["email"] != ctx.user.email:
+                raise _http(AuthError("proxy token does not match x-user-id / x-user-email", 401, "PROXY_MISMATCH"))
         return ctx
 
     return dependency

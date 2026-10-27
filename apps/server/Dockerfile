@@ -23,4 +23,5 @@ EXPOSE 4444
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD bun -e "fetch('http://127.0.0.1:4444/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 # Applies migrations, then starts. Bun runs the TypeScript sources directly.
+USER bun
 CMD ["bun", "run", "start"]

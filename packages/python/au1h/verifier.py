@@ -18,6 +18,10 @@ class AuthError(Exception):
         self.code = code
 
 
+# `typ` claim of the gateway's x-au1h-token; never a user access token.
+PROXY_TOKEN_TYPE = "au1h-proxy"
+
+
 @dataclass(frozen=True)
 class User:
     id: str
@@ -44,6 +48,13 @@ class Verifier:
         self._jwks = PyJWKClient(f"{self.url}/api/auth/jwks", cache_keys=True)
 
     def verify(self, token: str) -> Claims:
+        """Verify a user access token (from `GET /api/auth/token`).
+
+        A gateway proof token (`typ == "au1h-proxy"`) is rejected here; use
+        `verify_proxy_token` for `x-au1h-token`."""
+        return self._verify(token, expect_proxy=False)
+
+    def _verify(self, token: str, *, expect_proxy: bool) -> Claims:
         try:
             key = self._jwks.get_signing_key_from_jwt(token)
             claims = jwt.decode(
@@ -59,6 +70,15 @@ class Verifier:
             raise AuthError(f"invalid token: {exc}") from exc
         if "sub" not in claims or "email" not in claims:
             raise AuthError("token is missing sub or email")
+        is_proxy = claims.get("typ") == PROXY_TOKEN_TYPE
+        if is_proxy != expect_proxy:
+            raise AuthError(
+                "a gateway proof token is not an access token"
+                if is_proxy
+                else "x-au1h-token is not a gateway proof token",
+                401,
+                "WRONG_TOKEN_TYPE",
+            )
         return claims
 
     def verify_authorization(self, header: str | None) -> Claims:
@@ -71,7 +91,7 @@ class Verifier:
         """Verify the `x-au1h-token` the au1h gateway attaches to proxied requests."""
         if not header:
             raise AuthError("missing x-au1h-token", 401, "MISSING_PROXY_TOKEN")
-        return self.verify(header)
+        return self._verify(header, expect_proxy=True)
 
     def user(self, token: str) -> User:
         return User.from_claims(self.verify(token))

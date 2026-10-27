@@ -16,11 +16,11 @@ export async function checkHealth(): Promise<HealthStatus> {
       database: "connected",
       userCount: result.length,
     };
-  } catch (error) {
+  } catch {
     return {
       status: "error",
       database: "disconnected",
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: "database unreachable",
     };
   }
 }
