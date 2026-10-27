@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
+import { DOCS_URL } from "@/lib/config";
 import { queryClient } from "@/lib/query-client";
 
 const SECTIONS = {
@@ -30,7 +31,6 @@ const SECTIONS = {
   applications: { label: "Applications", to: "/applications" },
   users: { label: "Users", to: "/users" },
   tokens: { label: "API tokens", to: "/tokens" },
-  docs: { label: "Docs", to: "/docs" },
 } as const;
 
 type SectionKey = keyof typeof SECTIONS;
@@ -121,9 +121,9 @@ function MobileNav() {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link to="/docs">
+          <a href={DOCS_URL} rel="noreferrer" target="_blank">
             <BookOpen /> Docs
-          </Link>
+          </a>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

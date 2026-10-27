@@ -1,6 +1,7 @@
-const API_BASE = import.meta.env.VITE_SERVER_URL;
+import { SERVER_URL } from "./config";
 
-// Types
+const API_BASE = SERVER_URL;
+
 export interface Application {
   id: string;
   name: string;
@@ -32,7 +33,6 @@ export interface UpdateApplicationInput
   organizationsEnabled?: boolean;
 }
 
-// API functions
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,

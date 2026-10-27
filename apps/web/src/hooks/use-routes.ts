@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SERVER_URL } from "@/lib/config";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4444";
+const API_BASE = SERVER_URL;
 
 export interface AppRoute {
   id: string;
@@ -62,19 +63,6 @@ async function fetchRoutes(applicationId?: string): Promise<AppRoute[]> {
 
   const data = await response.json();
   return data.routes;
-}
-
-async function fetchRoute(id: string): Promise<AppRoute> {
-  const response = await fetch(`${API_BASE}/api/v1/routes/${id}`, {
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch route");
-  }
-
-  const data = await response.json();
-  return data.route;
 }
 
 async function createRoute(input: CreateRouteInput): Promise<AppRoute> {
@@ -145,14 +133,6 @@ export function useRoutes(applicationId?: string) {
   return useQuery({
     queryKey: routeKeys.list(applicationId),
     queryFn: () => fetchRoutes(applicationId),
-  });
-}
-
-export function useRoute(id: string) {
-  return useQuery({
-    queryKey: routeKeys.detail(id),
-    queryFn: () => fetchRoute(id),
-    enabled: !!id,
   });
 }
 

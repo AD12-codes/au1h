@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SERVER_URL } from "@/lib/config";
 
-const API_BASE = import.meta.env.VITE_SERVER_URL;
+const API_BASE = SERVER_URL;
 
 // Types
 export interface User {

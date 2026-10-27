@@ -25,6 +25,7 @@ import {
 import { useApplications } from "@/hooks/use-applications";
 import { useUsers } from "@/hooks/use-users";
 import { authClient } from "@/lib/auth-client";
+import { DOCS_URL } from "@/lib/config";
 
 export const Route = createFileRoute("/dashboard")({
   component: RouteComponent,
@@ -185,9 +186,9 @@ function RouteComponent() {
             ))}
             <li>
               <Button asChild className="w-full" size="sm" variant="outline">
-                <Link to="/docs">
-                  <BookOpen /> Read the integration guide
-                </Link>
+                <a href={DOCS_URL} rel="noreferrer" target="_blank">
+                  <BookOpen /> Read the docs
+                </a>
               </Button>
             </li>
           </ol>

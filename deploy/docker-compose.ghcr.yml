@@ -1,8 +1,7 @@
 # au1h on prebuilt images from GHCR (built by .github/workflows/build-images.yml).
-# Point Dokploy's Compose service at this file. Same variables as
-# deploy/.env.example; VITE_SERVER_URL is already baked into the web image.
-# Postgres and Redis are bundled; swap for managed databases by removing them
-# and setting DATABASE_URL / REDIS_URL.
+# Same variables as deploy/.env.example. Postgres and Redis are bundled; swap
+# for managed databases by removing them and setting DATABASE_URL / REDIS_URL.
+# Replace the image owner if you build your own images.
 services:
   server:
     image: ghcr.io/ad12-codes/au1h-server:${AU1H_IMAGE_TAG:-latest}
@@ -34,6 +33,8 @@ services:
   web:
     image: ghcr.io/ad12-codes/au1h-web:${AU1H_IMAGE_TAG:-latest}
     restart: unless-stopped
+    environment:
+      AU1H_SERVER_URL: ${BETTER_AUTH_URL}
     expose:
       - "80"
 

@@ -1,13 +1,12 @@
-# au1h — full stack for Dokploy / docker compose.
+# au1h — full stack with docker compose: server, admin portal, docs, Postgres, Redis.
 #
-# Dokploy: create a "Compose" service from this repository, set the variables
-# from deploy/.env.example in its Environment tab, then add domains:
-#   api.au1h.dev -> service "server", port 4444
-#   app.au1h.dev -> service "web",    port 80
-#   au1h.dev     -> service "docs",   port 80
-# Postgres and Redis run inside the stack with named volumes. Use Dokploy's
-# managed databases instead if you prefer; then drop those two services and
-# point DATABASE_URL / REDIS_URL at them.
+#   cp deploy/.env.example .env   # then edit
+#   docker compose up -d --build
+#
+# Put a reverse proxy in front: server :4444, web :80, docs :80. Postgres and
+# Redis run inside the stack with named volumes; to use managed databases,
+# remove those two services and set DATABASE_URL / REDIS_URL instead.
+# For prebuilt images see deploy/docker-compose.ghcr.yml.
 services:
   server:
     build:
@@ -42,9 +41,9 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      args:
-        VITE_SERVER_URL: ${BETTER_AUTH_URL}
     restart: unless-stopped
+    environment:
+      AU1H_SERVER_URL: ${BETTER_AUTH_URL}
     expose:
       - "80"
 
