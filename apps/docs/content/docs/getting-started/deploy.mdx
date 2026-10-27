@@ -35,14 +35,27 @@ Copy `deploy/.env.example` and set:
 The compose file sets `NODE_ENV=production` and `AU1H_TRUST_PROXY=true` (the stack sits
 behind a reverse proxy that sets `x-forwarded-for`).
 
+## Prebuilt images (recommended)
+
+`.github/workflows/build-images.yml` builds all three images on every push to `main` and
+pushes them to GHCR as `ghcr.io/<owner>/au1h-server`, `au1h-web` and `au1h-docs`, tagged
+`latest` and by commit SHA. Your server then only pulls images and never builds. The portal
+image bakes in `AU1H_SERVER_URL` (a repository variable; default `https://api.au1h.dev`).
+
+Use `deploy/docker-compose.ghcr.yml` for that setup. Set `AU1H_IMAGE_TAG` to a commit SHA
+to pin a release, or leave it as `latest`.
+
 ## Dokploy
 
-1. **Create → Compose**, source: this Git repository, compose path `docker-compose.yml`.
+1. **Create → Compose**, source: this Git repository, compose path
+   `deploy/docker-compose.ghcr.yml` (or `docker-compose.yml` to build on the server).
 2. **Environment**: paste the variables above.
 3. **Domains**: add one per service: `api.example.com → server:4444`,
    `app.example.com → web:80`, `docs.example.com → docs:80`, HTTPS on. Dokploy's Traefik
    issues the certificates.
 4. **Deploy.** The server container applies database migrations on start, then listens.
+5. Optional: copy the service's **webhook URL** into the repository secret
+   `DOKPLOY_WEBHOOK_URL`. The image workflow then triggers a redeploy after each push.
 
 If your DNS is proxied through Cloudflare, set its SSL mode to **Full (strict)** so the
 origin certificate is verified, and keep the records proxied or DNS-only consistently.

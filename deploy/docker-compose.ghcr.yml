@@ -1,0 +1,70 @@
+# au1h on prebuilt images from GHCR (built by .github/workflows/build-images.yml).
+# Point Dokploy's Compose service at this file. Same variables as
+# deploy/.env.example; VITE_SERVER_URL is already baked into the web image.
+# Postgres and Redis are bundled; swap for managed databases by removing them
+# and setting DATABASE_URL / REDIS_URL.
+services:
+  server:
+    image: ghcr.io/ad12-codes/au1h-server:${AU1H_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      PORT: "4444"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://au1h:${POSTGRES_PASSWORD}@postgres:5432/au1h}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      AU1H_ADMIN_EMAILS: ${AU1H_ADMIN_EMAILS:-}
+      AU1H_TRUST_PROXY: "true"
+      AU1H_PROXY_ALLOW_PRIVATE_BACKENDS: ${AU1H_PROXY_ALLOW_PRIVATE_BACKENDS:-false}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    expose:
+      - "4444"
+
+  web:
+    image: ghcr.io/ad12-codes/au1h-web:${AU1H_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    expose:
+      - "80"
+
+  docs:
+    image: ghcr.io/ad12-codes/au1h-docs:${AU1H_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    expose:
+      - "80"
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: au1h
+      POSTGRES_USER: au1h
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U au1h -d au1h"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:
