@@ -51,6 +51,23 @@ function Profile() {
 }
 ```
 
+## Passwordless and email flows
+
+The magic-link and one-time-code plugins are enabled by default. Links in
+the emails land on pages your app hosts; see [Email](/docs/concepts/email).
+
+```ts
+await auth.signIn.magicLink({ email, callbackURL: "/" });
+
+await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
+await auth.signIn.emailOtp({ email, otp });
+
+await auth.requestPasswordReset({ email, redirectTo: "/reset-password" });
+await auth.resetPassword({ newPassword, token });   // token from the landing page URL
+
+await auth.sendVerificationEmail({ email, callbackURL: "/welcome" });
+```
+
 ## Tokens and fetch helpers
 
 ```ts

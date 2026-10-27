@@ -49,6 +49,20 @@ Per client IP per minute, Redis-backed.
 | `AU1H_AUTH_RATE_LIMIT`  | on in production     | Better Auth's limiter on `/api/auth/*` (3 sign-ins / 10 s / IP) |
 | `AU1H_TRUST_PROXY`      | `false`              | Honour `x-forwarded-for` for limiting    |
 
+## Email
+
+See [Email](/docs/concepts/email) for what is sent and when.
+
+| Variable                           | Default   | Description                                                       |
+| ---------------------------------- | --------- | ----------------------------------------------------------------- |
+| `EMAIL_PROVIDER`                   | `console` | `console` (log only), `smtp`, `resend`, or `memory` (tests)        |
+| `EMAIL_FROM_ADDRESS`               |           | Sender, e.g. `"My Product" <no-reply@example.com>`                 |
+| `SMTP_URL`                         |           | `smtp://user:pass@host:587`, required for `smtp`                   |
+| `RESEND_API_KEY`                   |           | Required for `resend`                                             |
+| `AU1H_SEND_VERIFICATION_ON_SIGNUP` | `true`    | Email a verification link as part of sign-up                      |
+| `AU1H_REQUIRE_EMAIL_VERIFICATION`  | `false`   | Refuse password sign-in until the address is verified             |
+| `AU1H_ADMIN_NAME`                  | `au1h admin` | Name used in emails sent for the admin portal                 |
+
 ## OAuth providers
 
 | Variable                                     | Description                                   |

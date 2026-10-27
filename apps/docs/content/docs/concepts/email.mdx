@@ -1,0 +1,99 @@
+---
+title: Email
+description: Verification, password reset, magic links and one-time codes, sent per application.
+---
+
+au1h sends four kinds of transactional email on behalf of your applications.
+They are on for every application; which ones your product uses is up to your
+frontend.
+
+| Flow               | Trigger                                              | Expires            |
+| ------------------ | ---------------------------------------------------- | ------------------ |
+| Verify email       | Sign-up (default), or `POST /send-verification-email` | 24 hours           |
+| Reset password     | `POST /request-password-reset`                       | 1 hour             |
+| Magic link         | `POST /sign-in/magic-link`                           | 15 minutes         |
+| One-time code      | `POST /email-otp/send-verification-otp`              | 10 minutes, 5 tries |
+
+All endpoints live under `/api/auth` and take the usual `x-app-id` header.
+See the [auth API reference](/docs/reference/auth-api) for request bodies.
+
+## Branding
+
+Every email is rendered for the application it belongs to: the application's
+name in the subject and heading, its logo if one is set, and its first allowed
+origin as the "open the app" link. Emails sent for the admin portal use
+`AU1H_ADMIN_NAME` instead.
+
+The sender address is `EMAIL_FROM_ADDRESS` (for example
+`"My Product" <no-reply@example.com>`). Per-application sender addresses are
+not supported yet.
+
+## Delivery
+
+Pick a provider with `EMAIL_PROVIDER`:
+
+| Value     | What it does                                                   |
+| --------- | -------------------------------------------------------------- |
+| `console` | Default. Logs the message instead of sending it. Fine for dev. |
+| `smtp`    | Any SMTP relay via `SMTP_URL` (`smtp://user:pass@host:587`)    |
+| `resend`  | [Resend](https://resend.com) via `RESEND_API_KEY`              |
+| `memory`  | Keeps messages in memory. Used by the integration tests.       |
+
+Variables are listed in the [configuration reference](/docs/reference/configuration#email).
+
+## Tenancy
+
+The same email address can be a different user in each of your applications,
+so every email flow has to know which application it is acting for. Two
+things make that hold:
+
+- **Links carry the application.** A link opened from an inbox arrives in a
+  fresh browser with no `x-app-id` header, so each emailed link carries
+  `?app=<slug>` and the server resolves the tenant from it.
+- **Tokens are bound to the application.** Magic-link and reset tokens are
+  stored per application, so a token minted for app A does not exist for
+  app B. The verification token is a signed JWT naming only the address, so
+  au1h additionally records which application each one was sent for and
+  rejects a link whose `app` parameter disagrees.
+
+In practice: a password reset requested in app A cannot change the password
+of the same address in app B, a magic link for A does not sign in to B, and a
+code requested in A is "invalid" when presented to B. The integration tests
+under `apps/server/src/integration` assert each of these.
+
+## Options
+
+| Variable                            | Default | Effect                                                      |
+| ----------------------------------- | ------- | ----------------------------------------------------------- |
+| `AU1H_SEND_VERIFICATION_ON_SIGNUP`  | `true`  | Send the verification email as part of sign-up               |
+| `AU1H_REQUIRE_EMAIL_VERIFICATION`   | `false` | Refuse password sign-in until the address is verified        |
+
+Both are global for now; per-application settings are on the roadmap.
+
+## From the client SDK
+
+`@au1h/client` has the magic-link and one-time-code plugins enabled, so these
+work out of the box:
+
+```ts
+import { createAu1hClient } from "@au1h/client";
+
+const auth = createAu1hClient({ baseURL: "https://api.au1h.dev", appSlug: "my-app" });
+
+// Verification (sent on sign-up by default; resend on demand)
+await auth.sendVerificationEmail({ email, callbackURL: "/welcome" });
+
+// Password reset: the link in the email lands on redirectTo?token=…
+await auth.requestPasswordReset({ email, redirectTo: "/reset-password" });
+await auth.resetPassword({ newPassword, token });
+
+// Magic link: the link signs the user in and redirects to callbackURL
+await auth.signIn.magicLink({ email, callbackURL: "/" });
+
+// One-time code
+await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
+await auth.signIn.emailOtp({ email, otp });
+```
+
+Your app hosts the pages the links land on (`/reset-password`, the
+`callbackURL`s). au1h hosts nothing between the email and your page.
