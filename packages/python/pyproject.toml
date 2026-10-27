@@ -1,6 +1,6 @@
 [project]
 name = "au1h"
-version = "0.1.0"
+version = "0.1.1"
 description = "Verify au1h tokens and read au1h gateway headers. FastAPI helpers included."
 readme = "README.md"
 license = { text = "MIT" }
