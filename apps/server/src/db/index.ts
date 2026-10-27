@@ -2,16 +2,10 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { logger } from "@/utils/logger";
 
-const getDatabaseUrl = () => {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("DATABASE_URL is not set");
-  }
-  return url;
-};
-
+// Validated in initializeDatabase(), not at import time, so modules that
+// import `db` can be unit-tested without a database.
 const pool = new Pool({
-  connectionString: getDatabaseUrl(),
+  connectionString: process.env.DATABASE_URL,
   // The schema uses `timestamp` (without time zone). Better Auth and Drizzle
   // write UTC wall-clock values, so `DEFAULT now()` must produce UTC too;
   // otherwise rows created by the database default drift by the server's
@@ -28,6 +22,9 @@ export const db = drizzle(pool);
  * Initialize database connection and verify connectivity
  */
 export async function initializeDatabase() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is not set");
+  }
   try {
     logger.info("Initializing database connection...");
 

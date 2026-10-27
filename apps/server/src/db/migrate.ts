@@ -9,6 +9,11 @@ import { logger } from "@/utils/logger";
  */
 const migrationsFolder = new URL("./migrations", import.meta.url).pathname;
 
+if (!process.env.DATABASE_URL) {
+  logger.fatal("DATABASE_URL is not set");
+  process.exit(1);
+}
+
 try {
   logger.info({ migrationsFolder }, "Applying database migrations");
   await migrate(db, { migrationsFolder });
