@@ -15,10 +15,12 @@ export interface TestApp {
   id: string;
   slug: string;
   name: string;
+  secret: string;
 }
 
 export interface Harness {
   app: Hono;
+  orgId: string;
   /** Two applications in one workspace; the same email is a different user in each. */
   apps: { a: TestApp; b: TestApp };
   outbox: () => EmailMessage[];
@@ -67,18 +69,19 @@ export async function startHarness(): Promise<Harness> {
 
   async function makeApp(letter: "a" | "b"): Promise<TestApp> {
     const slug = `it-${letter}-${run}`;
-    const { application } = await createApplication({
+    const { application, secret } = await createApplication({
       organizationId: orgId,
       name: `App ${letter.toUpperCase()} ${run}`,
       slug,
       allowedOrigins: `http://${letter}.test`,
     });
-    return { id: application.id, slug, name: application.name };
+    return { id: application.id, slug, name: application.name, secret };
   }
   const apps = { a: await makeApp("a"), b: await makeApp("b") };
 
   return {
     app,
+    orgId,
     apps,
     outbox: getOutbox,
     clearOutbox,
