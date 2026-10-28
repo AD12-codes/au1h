@@ -1,6 +1,6 @@
 {
   "name": "@au1h/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Browser/client SDK for au1h: Better Auth client preconfigured for your application, plus JWT and proxy helpers.",
   "license": "MIT",
   "type": "module",
