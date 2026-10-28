@@ -6,7 +6,7 @@ import {
   expect,
   test,
 } from "bun:test";
-import { and, eq, inArray, like, or } from "drizzle-orm";
+import { and, eq, inArray, like, or, type SQL } from "drizzle-orm";
 import { createLocalJWKSet, type JSONWebKeySet, jwtVerify } from "jose";
 import { createApplication } from "../applications/service";
 import { db } from "../db";
@@ -36,13 +36,26 @@ const BASE = () => process.env.BETTER_AUTH_URL ?? "http://localhost:4444";
 const tokenOf = (link: string) =>
   new URL(link, "http://localhost").searchParams.get("token");
 
-const HAS_LIVE_OAUTH_PROVIDER = Boolean(
-  process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
-);
+function mergeCookies(existing: string, incoming: string): string {
+  const map = new Map<string, string>();
+  for (const part of `${existing}; ${incoming}`
+    .split(";")
+    .map((p) => p.trim())
+    .filter(Boolean)) {
+    const eqIdx = part.indexOf("=");
+    if (eqIdx !== -1) {
+      map.set(part.slice(0, eqIdx), part.slice(eqIdx + 1));
+    }
+  }
+  return Array.from(map.entries())
+    .map(([k, v]) => `${k}=${v}`)
+    .join("; ");
+}
 
 describeIntegration("isolation integration suite", () => {
   let h: Harness;
   let run: string;
+  let prevAdminEmails: string | undefined;
 
   // Workspace 2 resources
   let org2Id: string;
@@ -62,6 +75,7 @@ describeIntegration("isolation integration suite", () => {
   let tokenASecret: string;
 
   beforeAll(async () => {
+    prevAdminEmails = process.env.AU1H_ADMIN_EMAILS;
     process.env.AU1H_ADMIN_EMAILS = "@admin.test";
     h = await startHarness();
     run = Math.random().toString(36).slice(2, 8);
@@ -111,7 +125,7 @@ describeIntegration("isolation integration suite", () => {
       throw new Error(`Admin 1 set-active failed: ${setActive1.status}`);
     }
     if (setActive1.headers.getSetCookie().length > 0) {
-      cookieAdmin1 = cookiesOf(setActive1);
+      cookieAdmin1 = mergeCookies(cookieAdmin1, cookiesOf(setActive1));
     }
 
     // -------------------------------------------------------------------------
@@ -185,7 +199,7 @@ describeIntegration("isolation integration suite", () => {
       throw new Error(`Admin 2 set-active failed: ${setActive2.status}`);
     }
     if (setActive2.headers.getSetCookie().length > 0) {
-      cookieAdmin2 = cookiesOf(setActive2);
+      cookieAdmin2 = mergeCookies(cookieAdmin2, cookiesOf(setActive2));
     }
 
     // -------------------------------------------------------------------------
@@ -265,41 +279,67 @@ describeIntegration("isolation integration suite", () => {
   }, 60_000);
 
   afterAll(async () => {
-    // Clean up verification rows for App C and test tokens
-    await db
-      .delete(verifications)
-      .where(
-        or(
-          appC ? like(verifications.identifier, `${appC.id}:%`) : undefined,
-          like(verifications.identifier, "admin:%")
-        )
-      );
+    try {
+      // Clean up verification rows for App C and only the admin emails created in this run
+      const adminEmails = [admin1User?.email, admin2User?.email].filter(
+        Boolean
+      ) as string[];
+      const verificationConditions: (SQL | undefined)[] = [];
+      if (appC?.id) {
+        verificationConditions.push(
+          like(verifications.identifier, `${appC.id}:%`)
+        );
+      }
+      for (const email of adminEmails) {
+        verificationConditions.push(
+          eq(verifications.identifier, `admin:${email}`)
+        );
+      }
+      if (verificationConditions.length > 0) {
+        await db.delete(verifications).where(or(...verificationConditions));
+      }
 
-    // Delete Org 2 (cascades to App C, routes, sessions, tokens, members)
-    if (org2Id) {
-      await db.delete(organizations).where(eq(organizations.id, org2Id));
+      // Look up member rows of the two admin users, collect their organisation
+      // IDs except h.orgId and org2Id, and delete them by ID (auto-created personal workspaces)
+      const adminIds = [admin1User?.id, admin2User?.id].filter(
+        Boolean
+      ) as string[];
+      if (adminIds.length > 0) {
+        const adminMemberships = await db
+          .select({ organizationId: members.organizationId })
+          .from(members)
+          .where(inArray(members.userId, adminIds));
+        const autoCreatedOrgIds = adminMemberships
+          .map((m) => m.organizationId)
+          .filter((id) => id !== h?.orgId && id !== org2Id);
+
+        if (autoCreatedOrgIds.length > 0) {
+          await db
+            .delete(organizations)
+            .where(inArray(organizations.id, autoCreatedOrgIds));
+        }
+      }
+
+      // Delete Org 2 (cascades to App C, routes, sessions, tokens, members)
+      if (org2Id) {
+        await db.delete(organizations).where(eq(organizations.id, org2Id));
+      }
+
+      // Delete admin users (cascades to their accounts, sessions, members, tokens)
+      if (adminIds.length > 0) {
+        await db.delete(users).where(inArray(users.id, adminIds));
+      }
+
+      // Shared harness cleanup cleans Org 1 and apps A/B
+      await h?.cleanup();
+    } finally {
+      // Restore previous AU1H_ADMIN_EMAILS environment variable
+      if (prevAdminEmails !== undefined) {
+        process.env.AU1H_ADMIN_EMAILS = prevAdminEmails;
+      } else {
+        process.env.AU1H_ADMIN_EMAILS = undefined;
+      }
     }
-
-    // Delete auto-created personal workspace orgs for admin1 and admin2
-    await db
-      .delete(organizations)
-      .where(
-        or(
-          like(organizations.slug, "admin-workspace-%"),
-          like(organizations.name, "Admin's Workspace%")
-        )
-      );
-
-    // Delete admin users (cascades to their accounts, sessions, members, tokens)
-    const adminIds = [admin1User?.id, admin2User?.id].filter(
-      Boolean
-    ) as string[];
-    if (adminIds.length > 0) {
-      await db.delete(users).where(inArray(users.id, adminIds));
-    }
-
-    // Shared harness cleanup cleans Org 1 and apps A/B
-    await h?.cleanup();
   });
 
   beforeEach(() => h.clearOutbox());
@@ -325,8 +365,7 @@ describeIntegration("isolation integration suite", () => {
       email,
       password,
     });
-    expect(signInB.status).toBeGreaterThanOrEqual(400);
-    expect(signInB.status).not.toBe(500);
+    expect(signInB.status).toBe(401);
 
     // 1b. Sessions from App A are rejected on App B (returns no session / null)
     const sessionOnB = await getSession(h.app, h.apps.b.slug, cookieA);
@@ -933,7 +972,7 @@ describeIntegration("isolation integration suite", () => {
     const resetToken = tokenOf(openedReset.headers.get("location") ?? "");
     expect(resetToken).toBeTruthy();
 
-    // Submitting App A's reset token to App B is rejected
+    // Submitting App A's reset token to App B is rejected with 400
     const stolenReset = await authPost(
       h.app,
       h.apps.b.slug,
@@ -943,7 +982,7 @@ describeIntegration("isolation integration suite", () => {
         token: resetToken,
       }
     );
-    expect(stolenReset.status).toBeGreaterThanOrEqual(400);
+    expect(stolenReset.status).toBe(400);
 
     // App A password was not changed; original password still works
     const originalSignIn = await authPost(
@@ -961,12 +1000,7 @@ describeIntegration("isolation integration suite", () => {
   // ===========================================================================
   // 6. OAuth linking
   // ===========================================================================
-  test("OAuth linking: skipped unless live provider is configured", () => {
-    if (!HAS_LIVE_OAUTH_PROVIDER) {
-      // Better Auth's OAuth account linking relies on external provider callbacks
-      // (e.g. GitHub/Google redirect URIs and code exchanges) which cannot run
-      // in an isolated local environment without a live OAuth provider or HTTP mock.
-      return;
-    }
+  test.todo("OAuth account linking across apps: needs a provider mock", () => {
+    // Todo: requires an external OAuth provider mock
   });
 });
