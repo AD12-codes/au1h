@@ -107,7 +107,7 @@ A token minted for another app is rejected with 403. That is the whole point.
 ## CLI
 
 ```bash
-npm i -g au1h
+npm i -g @au1h/cli                           # installs the `au1h` command
 au1h login                                   # paste a personal access token
 au1h apps create todo --origins http://localhost:3000 --init
 au1h routes add todo /api/* http://localhost:8080
