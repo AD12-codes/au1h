@@ -1,6 +1,6 @@
 name: Release npm packages
 
-# Publishes @au1h/client, @au1h/server and the au1h CLI with npm trusted publishing (OIDC),
+# Publishes @au1h/client, @au1h/server and @au1h/cli (the `au1h` command) with npm trusted publishing (OIDC),
 # so no NPM_TOKEN is stored. Trigger: push a tag like npm-v0.1.0 whose version
 # matches all three package.json files. Requires each package to be configured for
 # trusted publishing on npmjs.com (Package settings → Trusted publisher:

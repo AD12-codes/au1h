@@ -1,5 +1,5 @@
 {
-  "name": "au1h",
+  "name": "@au1h/cli",
   "version": "0.1.0",
   "description": "Command-line interface for au1h: register applications, manage proxy routes and scaffold the SDK into your project.",
   "license": "MIT",
