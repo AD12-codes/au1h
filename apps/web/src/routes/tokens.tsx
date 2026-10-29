@@ -34,6 +34,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useCreateToken, useRevokeToken, useTokens } from "@/hooks/use-tokens";
+import {
+  READ_ONLY_MESSAGE,
+  useWorkspaceRole,
+} from "@/hooks/use-workspace-role";
 import { authClient } from "@/lib/auth-client";
 import { SERVER_URL } from "@/lib/config";
 
@@ -168,13 +172,19 @@ function CreateTokenDialog({
 function TokensPage() {
   const { data: tokens, isLoading } = useTokens();
   const revokeMutation = useRevokeToken();
+  const { isReadOnly } = useWorkspaceRole();
   const [createOpen, setCreateOpen] = useState(false);
 
   return (
     <>
       <PageHeader
         actions={
-          <Button onClick={() => setCreateOpen(true)} size="sm">
+          <Button
+            disabled={isReadOnly}
+            onClick={() => setCreateOpen(true)}
+            size="sm"
+            title={isReadOnly ? READ_ONLY_MESSAGE : undefined}
+          >
             <Plus /> New token
           </Button>
         }
@@ -186,7 +196,12 @@ function TokensPage() {
       {!(isLoading || tokens?.length) && (
         <EmptyState
           action={
-            <Button onClick={() => setCreateOpen(true)} size="sm">
+            <Button
+              disabled={isReadOnly}
+              onClick={() => setCreateOpen(true)}
+              size="sm"
+              title={isReadOnly ? READ_ONLY_MESSAGE : undefined}
+            >
               <Plus /> New token
             </Button>
           }
@@ -233,9 +248,10 @@ function TokensPage() {
                   <Button
                     aria-label="Revoke token"
                     className="text-muted-foreground hover:text-destructive"
-                    disabled={revokeMutation.isPending}
+                    disabled={revokeMutation.isPending || isReadOnly}
                     onClick={() => revokeMutation.mutate(t.id)}
                     size="icon-sm"
+                    title={isReadOnly ? READ_ONLY_MESSAGE : undefined}
                     variant="ghost"
                   >
                     <Trash2 />

@@ -112,3 +112,14 @@ export const tokensApi = {
       method: "DELETE",
     }),
 };
+
+export interface AdminMe {
+  user: { id: string; email: string };
+  organization: { id: string; name: string | null; slug: string | null };
+  role: "owner" | "admin" | "member";
+  authVia: "session" | "token";
+}
+
+export const meApi = {
+  get: () => fetchApi<AdminMe>("/api/v1/me"),
+};

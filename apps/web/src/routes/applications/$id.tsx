@@ -28,7 +28,11 @@ import {
 } from "@/hooks/use-applications";
 import type { AppRoute } from "@/hooks/use-routes";
 import { useRoutes } from "@/hooks/use-routes";
-import type { UpdateApplicationInput } from "@/lib/api";
+import {
+  READ_ONLY_MESSAGE,
+  useWorkspaceRole,
+} from "@/hooks/use-workspace-role";
+import type { Application, UpdateApplicationInput } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/applications/$id")({
@@ -71,6 +75,29 @@ function LoadingState() {
   );
 }
 
+function defaultFormData(app: Application): UpdateApplicationInput {
+  return {
+    name: app.name,
+    slug: app.slug,
+    allowedOrigins: app.allowedOrigins || "",
+    redirectUris: app.redirectUris || "",
+    logo: app.logo,
+    isActive: app.isActive,
+    organizationsEnabled: app.organizationsEnabled,
+  };
+}
+
+function parseIsSystemApp(metadata: string | null | undefined): boolean {
+  if (!metadata) {
+    return false;
+  }
+  try {
+    return Boolean(JSON.parse(metadata).isSystemApp);
+  } catch {
+    return false;
+  }
+}
+
 function ApplicationDetailPage() {
   const { id } = Route.useParams();
   const { data: application, isLoading } = useApplication(id);
@@ -84,17 +111,10 @@ function ApplicationDetailPage() {
   const [editingRoute, setEditingRoute] = useState<AppRoute | null>(null);
 
   const { data: routes = [], isLoading: routesLoading } = useRoutes(id);
+  const { isReadOnly } = useWorkspaceRole();
 
   if (application && !formData) {
-    setFormData({
-      name: application.name,
-      slug: application.slug,
-      allowedOrigins: application.allowedOrigins || "",
-      redirectUris: application.redirectUris || "",
-      logo: application.logo,
-      isActive: application.isActive,
-      organizationsEnabled: application.organizationsEnabled,
-    });
+    setFormData(defaultFormData(application));
   }
 
   if (isLoading) {
@@ -105,9 +125,7 @@ function ApplicationDetailPage() {
     return <PageHeader eyebrow={<BackLink />} title="Application not found" />;
   }
 
-  const isSystemApp = application.metadata
-    ? JSON.parse(application.metadata).isSystemApp
-    : false;
+  const isSystemApp = parseIsSystemApp(application.metadata);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,11 +152,13 @@ function ApplicationDetailPage() {
       <PageHeader
         actions={
           <Button
+            disabled={isReadOnly}
             onClick={() => {
               setEditingRoute(null);
               setRouteDialogOpen(true);
             }}
             size="sm"
+            title={isReadOnly ? READ_ONLY_MESSAGE : undefined}
             variant="outline"
           >
             <Plus /> Add route
@@ -180,6 +200,7 @@ function ApplicationDetailPage() {
                 isSystemApp={isSystemApp}
                 onChange={setFormData}
                 onSubmit={handleSubmit}
+                readOnly={isReadOnly}
                 success={success}
               />
             </CardContent>
@@ -207,6 +228,7 @@ function ApplicationDetailPage() {
                   setEditingRoute(route);
                   setRouteDialogOpen(true);
                 }}
+                readOnly={isReadOnly}
                 routes={routes}
               />
             )}
@@ -253,9 +275,10 @@ function ApplicationDetailPage() {
             <CardContent>
               <Button
                 className="w-full"
-                disabled={regenerateSecretMutation.isPending}
+                disabled={regenerateSecretMutation.isPending || isReadOnly}
                 onClick={handleRegenerateSecret}
                 size="sm"
+                title={isReadOnly ? READ_ONLY_MESSAGE : undefined}
                 variant="outline"
               >
                 <RefreshCw

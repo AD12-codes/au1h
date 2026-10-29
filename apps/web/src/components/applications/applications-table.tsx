@@ -34,12 +34,14 @@ interface ApplicationsTableProps {
   applications: Application[];
   onDelete: (app: Application) => void;
   onRegenerateSecret: (app: Application) => void;
+  readOnly?: boolean;
 }
 
 export function ApplicationsTable({
   applications,
   onDelete,
   onRegenerateSecret,
+  readOnly = false,
 }: ApplicationsTableProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -139,19 +141,23 @@ export function ApplicationsTable({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <Link params={{ id: app.id }} to="/applications/$id">
-                      <Pencil /> Edit
+                      <Pencil /> {readOnly ? "View" : "Edit"}
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onRegenerateSecret(app)}>
-                    <RefreshCw /> Regenerate secret
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => onDelete(app)}
-                    variant="destructive"
-                  >
-                    <Trash2 /> Delete
-                  </DropdownMenuItem>
+                  {!readOnly && (
+                    <>
+                      <DropdownMenuItem onClick={() => onRegenerateSecret(app)}>
+                        <RefreshCw /> Regenerate secret
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => onDelete(app)}
+                        variant="destructive"
+                      >
+                        <Trash2 /> Delete
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </TableCell>

@@ -10,6 +10,10 @@ import { TableSkeleton } from "@/components/shared/loading";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { useApplications, useRegenerateSecret } from "@/hooks/use-applications";
+import {
+  READ_ONLY_MESSAGE,
+  useWorkspaceRole,
+} from "@/hooks/use-workspace-role";
 import type { Application } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 
@@ -26,6 +30,7 @@ export const Route = createFileRoute("/applications/")({
 function ApplicationsPage() {
   const { data: applications, isLoading } = useApplications();
   const regenerateSecretMutation = useRegenerateSecret();
+  const { isReadOnly } = useWorkspaceRole();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deleteApp, setDeleteApp] = useState<Application | null>(null);
@@ -50,7 +55,12 @@ function ApplicationsPage() {
       return (
         <EmptyState
           action={
-            <Button onClick={() => setIsCreateOpen(true)} size="sm">
+            <Button
+              disabled={isReadOnly}
+              onClick={() => setIsCreateOpen(true)}
+              size="sm"
+              title={isReadOnly ? READ_ONLY_MESSAGE : undefined}
+            >
               <Plus /> New application
             </Button>
           }
@@ -65,6 +75,7 @@ function ApplicationsPage() {
         applications={applications}
         onDelete={setDeleteApp}
         onRegenerateSecret={handleRegenerateSecret}
+        readOnly={isReadOnly}
       />
     );
   };
@@ -73,7 +84,12 @@ function ApplicationsPage() {
     <>
       <PageHeader
         actions={
-          <Button onClick={() => setIsCreateOpen(true)} size="sm">
+          <Button
+            disabled={isReadOnly}
+            onClick={() => setIsCreateOpen(true)}
+            size="sm"
+            title={isReadOnly ? READ_ONLY_MESSAGE : undefined}
+          >
             <Plus /> New application
           </Button>
         }

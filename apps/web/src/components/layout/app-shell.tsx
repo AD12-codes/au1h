@@ -1,4 +1,5 @@
 import type * as React from "react";
+import { ReadOnlyBanner } from "@/components/shared/read-only-banner";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 
@@ -11,6 +12,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Topbar />
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
+            <ReadOnlyBanner />
             {children}
           </div>
         </main>
