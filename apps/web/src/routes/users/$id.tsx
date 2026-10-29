@@ -9,6 +9,10 @@ import { UserInfoCard } from "@/components/users/user-info-card";
 import { UserSessionsList } from "@/components/users/user-sessions-list";
 import { UserStatusBadge } from "@/components/users/users-table";
 import { useUnbanUser, useUser } from "@/hooks/use-users";
+import {
+  READ_ONLY_MESSAGE,
+  useWorkspaceRole,
+} from "@/hooks/use-workspace-role";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/users/$id")({
@@ -37,6 +41,7 @@ function UserDetailPage() {
   const { data, isLoading } = useUser(id);
   const [showBanDialog, setShowBanDialog] = useState(false);
   const unbanMutation = useUnbanUser();
+  const { isReadOnly } = useWorkspaceRole();
 
   if (isLoading) {
     return (
@@ -61,9 +66,10 @@ function UserDetailPage() {
         actions={
           user.banned ? (
             <Button
-              disabled={unbanMutation.isPending}
+              disabled={unbanMutation.isPending || isReadOnly}
               onClick={() => unbanMutation.mutateAsync(user.id)}
               size="sm"
+              title={isReadOnly ? READ_ONLY_MESSAGE : undefined}
               variant="outline"
             >
               <ShieldOff />
@@ -71,8 +77,10 @@ function UserDetailPage() {
             </Button>
           ) : (
             <Button
+              disabled={isReadOnly}
               onClick={() => setShowBanDialog(true)}
               size="sm"
+              title={isReadOnly ? READ_ONLY_MESSAGE : undefined}
               variant="outline"
             >
               <Ban /> Ban user
@@ -91,7 +99,7 @@ function UserDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <UserInfoCard user={user} />
-        <UserSessionsList userId={user.id} />
+        <UserSessionsList readOnly={isReadOnly} userId={user.id} />
       </div>
 
       <BanUserDialog

@@ -3,6 +3,7 @@ import {
   type AdminEnv,
   requireOrgSession,
 } from "@/middleware/require-org-session";
+import { requireRole } from "@/middleware/require-role";
 import {
   ban,
   get,
@@ -20,7 +21,15 @@ usersRoute.use("*", requireOrgSession);
 usersRoute.get("/", list);
 usersRoute.get("/:id", get);
 usersRoute.get("/:id/sessions", getSessions);
-usersRoute.post("/:id/ban", ban);
-usersRoute.post("/:id/unban", unban);
-usersRoute.delete("/:id/sessions", revokeAllSessions);
-usersRoute.delete("/sessions/:sessionId", revokeUserSession);
+usersRoute.post("/:id/ban", requireRole("owner", "admin"), ban);
+usersRoute.post("/:id/unban", requireRole("owner", "admin"), unban);
+usersRoute.delete(
+  "/:id/sessions",
+  requireRole("owner", "admin"),
+  revokeAllSessions
+);
+usersRoute.delete(
+  "/sessions/:sessionId",
+  requireRole("owner", "admin"),
+  revokeUserSession
+);

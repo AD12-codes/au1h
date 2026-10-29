@@ -104,6 +104,7 @@ export async function revokeToken(
 export interface ResolvedToken {
   organizationId: string;
   user: { id: string; email: string };
+  role: "owner" | "admin" | "member";
 }
 
 /**
@@ -128,9 +129,17 @@ export async function resolveToken(
       email: users.email,
       banned: users.banned,
       userApplicationId: users.applicationId,
+      role: members.role,
     })
     .from(adminApiTokens)
     .innerJoin(users, eq(adminApiTokens.userId, users.id))
+    .innerJoin(
+      members,
+      and(
+        eq(members.userId, adminApiTokens.userId),
+        eq(members.organizationId, adminApiTokens.organizationId)
+      )
+    )
     .where(eq(adminApiTokens.tokenHash, tokenHash))
     .limit(1);
 
@@ -144,20 +153,6 @@ export async function resolveToken(
     return null;
   }
 
-  const [membership] = await db
-    .select({ id: members.id })
-    .from(members)
-    .where(
-      and(
-        eq(members.userId, row.userId),
-        eq(members.organizationId, row.organizationId)
-      )
-    )
-    .limit(1);
-  if (!membership) {
-    return null;
-  }
-
   // Best-effort usage stamp; never block the request on it.
   db.update(adminApiTokens)
     .set({ lastUsedAt: new Date() })
@@ -167,5 +162,6 @@ export async function resolveToken(
   return {
     organizationId: row.organizationId,
     user: { id: row.userId, email: row.email },
+    role: (row.role as "owner" | "admin" | "member") ?? "member",
   };
 }

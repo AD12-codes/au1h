@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { READ_ONLY_MESSAGE } from "@/hooks/use-workspace-role";
 import type { UpdateApplicationInput } from "@/lib/api";
 
 interface SettingsFormProps {
@@ -13,6 +14,7 @@ interface SettingsFormProps {
   error: string | null;
   success: boolean;
   onSubmit: (e: React.FormEvent) => void;
+  readOnly?: boolean;
 }
 
 export function SettingsForm({
@@ -23,6 +25,7 @@ export function SettingsForm({
   error,
   success,
   onSubmit,
+  readOnly = false,
 }: SettingsFormProps) {
   const updateField = <K extends keyof UpdateApplicationInput>(
     field: K,
@@ -48,6 +51,7 @@ export function SettingsForm({
         <div className="space-y-1.5">
           <Label htmlFor="name">Name</Label>
           <Input
+            disabled={readOnly}
             id="name"
             onChange={(e) => updateField("name", e.target.value)}
             required
@@ -59,7 +63,7 @@ export function SettingsForm({
           <Label htmlFor="slug">Slug</Label>
           <Input
             className="font-mono"
-            disabled={isSystemApp}
+            disabled={isSystemApp || readOnly}
             id="slug"
             onChange={(e) => updateField("slug", e.target.value)}
             pattern="^[a-z0-9-]+$"
@@ -79,6 +83,7 @@ export function SettingsForm({
         <Label htmlFor="allowedOrigins">Allowed Origins</Label>
         <Input
           className="font-mono"
+          disabled={readOnly}
           id="allowedOrigins"
           onChange={(e) => updateField("allowedOrigins", e.target.value)}
           placeholder="http://localhost:3000, https://myapp.com"
@@ -93,6 +98,7 @@ export function SettingsForm({
         <Label htmlFor="redirectUris">Redirect URIs</Label>
         <Input
           className="font-mono"
+          disabled={readOnly}
           id="redirectUris"
           onChange={(e) => updateField("redirectUris", e.target.value)}
           placeholder="http://localhost:3000/callback"
@@ -106,6 +112,7 @@ export function SettingsForm({
       <div className="space-y-1.5">
         <Label htmlFor="logo">Logo URL</Label>
         <Input
+          disabled={readOnly}
           id="logo"
           onChange={(e) => updateField("logo", e.target.value || null)}
           placeholder="https://example.com/logo.png"
@@ -125,7 +132,7 @@ export function SettingsForm({
         </div>
         <Switch
           checked={!!formData.isActive}
-          disabled={isSystemApp}
+          disabled={isSystemApp || readOnly}
           id="isActive"
           onCheckedChange={(checked) => updateField("isActive", checked)}
         />
@@ -141,6 +148,7 @@ export function SettingsForm({
         </div>
         <Switch
           checked={!!formData.organizationsEnabled}
+          disabled={readOnly}
           id="organizationsEnabled"
           onCheckedChange={(checked) =>
             updateField("organizationsEnabled", checked)
@@ -149,7 +157,12 @@ export function SettingsForm({
       </div>
 
       <div className="flex justify-end">
-        <Button disabled={isLoading} size="sm" type="submit">
+        <Button
+          disabled={isLoading || readOnly}
+          size="sm"
+          title={readOnly ? READ_ONLY_MESSAGE : undefined}
+          type="submit"
+        >
           <Save />
           {isLoading ? "Saving…" : "Save changes"}
         </Button>

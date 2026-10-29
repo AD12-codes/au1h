@@ -18,6 +18,22 @@ Organizations, memberships and invitations are isolated per application. The slu
 can exist once in every application. An invitation inside your application never grants
 access to the au1h admin portal.
 
+## Admin workspaces vs. application organizations
+
+au1h uses the underlying organization table for two distinct boundaries:
+
+1. **Admin-portal workspaces** (`application_id IS NULL`):
+   - Created in the admin portal (`au1h-admin`) or during initial admin setup.
+   - Serve as organizational tenant boundaries for your engineering team.
+   - Own client applications, proxy route configurations, and personal access tokens (PATs).
+   - Govern access to the Admin API (`/api/v1/*`) using workspace roles (`owner`, `admin`, `member`).
+   - The `member` role is strictly read-only: mutating routes return `403 Forbidden` (`{ "error": "Requires the owner or admin role" }`), and create/edit actions in the web portal are disabled.
+
+2. **Client-application organizations** (`application_id = app.id`):
+   - Created by end users within a specific application when Organizations is enabled.
+   - Scoped strictly to that application's tenant ID: an organization with slug `acme` in Application A is completely separate from an organization with slug `acme` in Application B.
+   - Client memberships, invitations, and permissions never cross application boundaries and have no access to the au1h admin portal or Admin API.
+
 ## Client usage
 
 ```ts

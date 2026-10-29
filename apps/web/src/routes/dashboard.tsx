@@ -24,6 +24,10 @@ import {
 } from "@/components/ui/table";
 import { useApplications } from "@/hooks/use-applications";
 import { useUsers } from "@/hooks/use-users";
+import {
+  READ_ONLY_MESSAGE,
+  useWorkspaceRole,
+} from "@/hooks/use-workspace-role";
 import { authClient } from "@/lib/auth-client";
 import { DOCS_URL } from "@/lib/config";
 
@@ -60,6 +64,7 @@ function RouteComponent() {
   const { session } = Route.useLoaderData();
   const { data: applications, isLoading } = useApplications();
   const { data: users } = useUsers({ page: 1, limit: 1 });
+  const { isReadOnly } = useWorkspaceRole();
 
   const apps = applications ?? [];
   const sessions = apps.reduce((n, a) => n + (a.sessionCount ?? 0), 0);
@@ -72,11 +77,17 @@ function RouteComponent() {
     <>
       <PageHeader
         actions={
-          <Button asChild size="sm">
-            <Link to="/applications">
+          isReadOnly ? (
+            <Button disabled size="sm" title={READ_ONLY_MESSAGE}>
               <Plus /> New application
-            </Link>
-          </Button>
+            </Button>
+          ) : (
+            <Button asChild size="sm">
+              <Link to="/applications">
+                <Plus /> New application
+              </Link>
+            </Button>
+          )
         }
         description="Applications, users and sessions in your workspace."
         title={`Good to see you, ${firstName}`}

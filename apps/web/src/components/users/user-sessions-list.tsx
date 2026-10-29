@@ -18,6 +18,7 @@ import {
   useRevokeSession,
   useUserSessions,
 } from "@/hooks/use-users";
+import { READ_ONLY_MESSAGE } from "@/hooks/use-workspace-role";
 
 const MOBILE_REGEX = /mobile|android|iphone|ipad/i;
 
@@ -47,9 +48,11 @@ function parseUserAgent(ua: string | null): {
 function SessionItem({
   session,
   userId,
+  readOnly = false,
 }: {
   session: Session;
   userId: string;
+  readOnly?: boolean;
 }) {
   const revokeSession = useRevokeSession();
   const { device, browser } = parseUserAgent(session.userAgent);
@@ -94,9 +97,10 @@ function SessionItem({
       <Button
         aria-label="Revoke session"
         className="text-muted-foreground hover:text-destructive"
-        disabled={revokeSession.isPending}
+        disabled={revokeSession.isPending || readOnly}
         onClick={() => revokeSession.mutate({ sessionId: session.id, userId })}
         size="icon-sm"
+        title={readOnly ? READ_ONLY_MESSAGE : undefined}
         variant="ghost"
       >
         <Trash2 />
@@ -105,7 +109,13 @@ function SessionItem({
   );
 }
 
-export function UserSessionsList({ userId }: { userId: string }) {
+export function UserSessionsList({
+  userId,
+  readOnly = false,
+}: {
+  userId: string;
+  readOnly?: boolean;
+}) {
   const { data, isLoading } = useUserSessions(userId);
   const revokeAllSessions = useRevokeAllSessions();
   const sessions = data?.sessions ?? [];
@@ -122,9 +132,10 @@ export function UserSessionsList({ userId }: { userId: string }) {
         {sessions.length > 0 && (
           <CardAction>
             <Button
-              disabled={revokeAllSessions.isPending}
+              disabled={revokeAllSessions.isPending || readOnly}
               onClick={() => revokeAllSessions.mutate(userId)}
               size="sm"
+              title={readOnly ? READ_ONLY_MESSAGE : undefined}
               variant="outline"
             >
               <Trash2 /> Revoke all
@@ -149,7 +160,12 @@ export function UserSessionsList({ userId }: { userId: string }) {
         {!isLoading && sessions.length > 0 && (
           <ul className="divide-y">
             {sessions.map((session) => (
-              <SessionItem key={session.id} session={session} userId={userId} />
+              <SessionItem
+                key={session.id}
+                readOnly={readOnly}
+                session={session}
+                userId={userId}
+              />
             ))}
           </ul>
         )}

@@ -45,6 +45,7 @@ interface RoutesTableProps {
   routes: AppRoute[];
   onEdit: (route: AppRoute) => void;
   onAdd?: () => void;
+  readOnly?: boolean;
 }
 
 const METHOD_COLOR: Record<string, string> = {
@@ -70,7 +71,12 @@ function Method({ method }: { method: string }) {
   );
 }
 
-export function RoutesTable({ routes, onEdit, onAdd }: RoutesTableProps) {
+export function RoutesTable({
+  routes,
+  onEdit,
+  onAdd,
+  readOnly = false,
+}: RoutesTableProps) {
   const [deleteRoute, setDeleteRoute] = useState<AppRoute | null>(null);
   const deleteMutation = useDeleteRoute();
   const toggleMutation = useToggleRoute();
@@ -90,6 +96,7 @@ export function RoutesTable({ routes, onEdit, onAdd }: RoutesTableProps) {
     return (
       <EmptyState
         action={
+          !readOnly &&
           onAdd && (
             <Button onClick={onAdd} size="sm" variant="outline">
               <Plus /> Add route
@@ -148,37 +155,39 @@ export function RoutesTable({ routes, onEdit, onAdd }: RoutesTableProps) {
                 <ActiveBadge active={route.isActive} />
               </TableCell>
               <TableCell>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="icon-sm" variant="ghost">
-                      <MoreHorizontal className="size-4" />
-                      <span className="sr-only">Open menu</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => onEdit(route)}>
-                      <Pencil /> Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleToggle(route)}>
-                      {route.isActive ? (
-                        <>
-                          <Pause /> Disable
-                        </>
-                      ) : (
-                        <>
-                          <Play /> Enable
-                        </>
-                      )}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => setDeleteRoute(route)}
-                      variant="destructive"
-                    >
-                      <Trash2 /> Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                {!readOnly && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="icon-sm" variant="ghost">
+                        <MoreHorizontal className="size-4" />
+                        <span className="sr-only">Open menu</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => onEdit(route)}>
+                        <Pencil /> Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleToggle(route)}>
+                        {route.isActive ? (
+                          <>
+                            <Pause /> Disable
+                          </>
+                        ) : (
+                          <>
+                            <Play /> Enable
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setDeleteRoute(route)}
+                        variant="destructive"
+                      >
+                        <Trash2 /> Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </TableCell>
             </TableRow>
           ))}
