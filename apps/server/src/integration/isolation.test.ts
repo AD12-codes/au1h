@@ -337,7 +337,7 @@ describeIntegration("isolation integration suite", () => {
       if (prevAdminEmails !== undefined) {
         process.env.AU1H_ADMIN_EMAILS = prevAdminEmails;
       } else {
-        process.env.AU1H_ADMIN_EMAILS = undefined;
+        process.env.AU1H_ADMIN_EMAILS = "";
       }
     }
   });
