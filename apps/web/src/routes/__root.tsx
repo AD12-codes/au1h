@@ -8,6 +8,7 @@ import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { ThemeProvider } from "@/components/theme-provider";
 import "../index.css";
 import { AppShell } from "@/components/layout/app-shell";
+import { Toaster } from "@/components/ui/sonner";
 
 export type RouterAppContext = Record<string, never>;
 
@@ -33,7 +34,13 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 });
 
 // Full-bleed pages that render their own chrome.
-const BARE_ROUTES = new Set(["/", "/login", "/register"]);
+const BARE_ROUTES = new Set([
+  "/",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+]);
 
 function RootComponent() {
   const location = useLocation();
@@ -55,6 +62,7 @@ function RootComponent() {
             <Outlet />
           </AppShell>
         )}
+        <Toaster />
         {import.meta.env.DEV && (
           <TanStackRouterDevtools position="bottom-right" />
         )}
