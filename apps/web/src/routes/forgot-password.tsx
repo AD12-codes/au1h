@@ -25,6 +25,7 @@ export const Route = createFileRoute("/forgot-password")({
 function RouteComponent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { resolvedTheme } = useTheme();
 
   const form = useForm({
@@ -34,15 +35,22 @@ function RouteComponent() {
     onSubmit: async ({ value }) => {
       try {
         setIsLoading(true);
-        await authClient.requestPasswordReset({
+        setError(null);
+        const res = await authClient.requestPasswordReset({
           email: value.email,
-          redirectTo: "/reset-password",
+          redirectTo: `${window.location.origin}/reset-password`,
         });
+
+        if (res?.error) {
+          setError("Could not send the reset email. Try again.");
+          return;
+        }
+
+        setIsSubmitted(true);
       } catch {
-        // Neutral response: do not disclose if the email exists
+        setError("Could not send the reset email. Try again.");
       } finally {
         setIsLoading(false);
-        setIsSubmitted(true);
       }
     },
   });
@@ -73,6 +81,12 @@ function RouteComponent() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {error && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
+                  {error}
+                </div>
+              )}
+
               {isSubmitted ? (
                 <div className="space-y-4">
                   <div className="rounded-md border border-border bg-muted/40 p-4 text-center text-[13px] text-muted-foreground">

@@ -19,22 +19,35 @@ import { authClient } from "@/lib/auth-client";
 
 type ResetPasswordSearch = {
   token?: string;
+  error?: string;
 };
 
 export const Route = createFileRoute("/reset-password")({
   validateSearch: (search: Record<string, unknown>): ResetPasswordSearch => ({
     token: typeof search.token === "string" ? search.token : undefined,
+    error: typeof search.error === "string" ? search.error : undefined,
   }),
   component: RouteComponent,
 });
+
+function getInitialTokenError(searchError?: string): string {
+  if (searchError === "INVALID_TOKEN" || searchError === "token_expired") {
+    return "This link has expired or was already used.";
+  }
+  return "Missing or invalid reset token.";
+}
 
 function parseResetError(err: unknown): { isToken: boolean; message: string } {
   if (!err) {
     return { isToken: false, message: "Failed to reset password" };
   }
-  const status =
-    typeof err === "object" && err !== null && "status" in err
-      ? (err.status as number)
+
+  const code =
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    typeof err.code === "string"
+      ? err.code
       : undefined;
 
   let message = "Failed to reset password";
@@ -49,12 +62,12 @@ function parseResetError(err: unknown): { isToken: boolean; message: string } {
     message = err.message;
   }
 
-  const isToken = status === 400 || message.toLowerCase().includes("token");
+  const isToken = code === "INVALID_TOKEN";
   return { isToken, message };
 }
 
 function RouteComponent() {
-  const { token } = Route.useSearch();
+  const { token, error: searchError } = Route.useSearch();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
@@ -63,7 +76,7 @@ function RouteComponent() {
 
   const applyError = (parsed: { isToken: boolean; message: string }) => {
     if (parsed.isToken) {
-      setTokenError("This reset link is invalid or has expired.");
+      setTokenError("This link has expired or was already used.");
     } else {
       setError(parsed.message);
     }
@@ -143,7 +156,7 @@ function RouteComponent() {
               {!token && (
                 <div className="space-y-4">
                   <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-[13px] text-destructive">
-                    Missing or invalid reset token.{" "}
+                    {getInitialTokenError(searchError)}{" "}
                     <Link
                       className="font-medium underline hover:text-destructive/80"
                       to="/forgot-password"
