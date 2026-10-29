@@ -137,7 +137,15 @@ function RouteComponent() {
                 <form.Field name="password">
                   {(field) => (
                     <div className="space-y-1.5">
-                      <Label htmlFor="password">Password</Label>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="password">Password</Label>
+                        <Link
+                          className="text-[13px] text-muted-foreground hover:text-primary hover:underline"
+                          to="/forgot-password"
+                        >
+                          Forgot password?
+                        </Link>
+                      </div>
                       <Input
                         disabled={isLoading !== null}
                         id="password"
