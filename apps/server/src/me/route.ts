@@ -29,6 +29,7 @@ meRoute.get("/", async (c) => {
   return c.json({
     user: c.get("adminUser"),
     organization: org ?? { id: organizationId, name: null, slug: null },
+    role: c.get("role"),
     authVia: c.get("authVia"),
   });
 });

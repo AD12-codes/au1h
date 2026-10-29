@@ -6,6 +6,8 @@ import { getAdminSession } from "@/lib/auth";
 import { resolveToken, TOKEN_PREFIX } from "@/tokens/service";
 import { logger } from "@/utils/logger";
 
+export type WorkspaceRole = "owner" | "admin" | "member";
+
 /**
  * Hono environment for the authenticated admin API (`/api/v1/*`).
  */
@@ -14,6 +16,7 @@ export type AdminEnv = {
     /** Organization the caller is acting for. */
     organizationId: string;
     adminUser: { id: string; email: string };
+    role: WorkspaceRole;
     /** How the caller authenticated. */
     authVia: "session" | "token";
   };
@@ -44,6 +47,7 @@ export async function requireOrgSession(c: Context<AdminEnv>, next: Next) {
     }
     c.set("organizationId", resolved.organizationId);
     c.set("adminUser", resolved.user);
+    c.set("role", resolved.role);
     c.set("authVia", "token");
     await next();
     return;
@@ -76,7 +80,7 @@ export async function requireOrgSession(c: Context<AdminEnv>, next: Next) {
   // The session's active workspace is a snapshot; the caller must still be a
   // member, or a removed admin would keep API access until the session expires.
   const [membership] = await db
-    .select({ id: members.id })
+    .select({ id: members.id, role: members.role })
     .from(members)
     .where(
       and(
@@ -94,6 +98,7 @@ export async function requireOrgSession(c: Context<AdminEnv>, next: Next) {
 
   c.set("organizationId", activeOrganizationId);
   c.set("adminUser", { id: session.user.id, email: session.user.email });
+  c.set("role", (membership.role as WorkspaceRole) ?? "member");
   c.set("authVia", "session");
   await next();
 }
