@@ -60,7 +60,8 @@ curl http://localhost:4444/api/v1/health
 
 Open `http://localhost:4445/register`. **The very first sign-up is allowed** and becomes
 an admin with its own workspace. After that, admin sign-up is closed unless the email is in
-`AU1H_ADMIN_EMAILS` or has a pending workspace invitation.
+`AU1H_ADMIN_EMAILS` or has a pending workspace invitation. Admins can reset a forgotten
+password via the **Forgot password?** link on `/login`.
 
 <Callout type="info">
   Admin accounts are separate from your applications' users. `john@example.com` can be an
