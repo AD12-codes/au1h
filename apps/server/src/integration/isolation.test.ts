@@ -17,6 +17,7 @@ import {
   users,
   verifications,
 } from "../db/schema/auth";
+import { createToken } from "../tokens/service";
 import {
   authPost,
   cookiesOf,
@@ -66,6 +67,14 @@ describeIntegration("isolation integration suite", () => {
   let admin2User: { id: string; email: string };
   let cookieAdmin1: string;
   let cookieAdmin2: string;
+
+  // Workspace 1 member session (read-only member)
+  let memberUser: { id: string; email: string };
+  let cookieMember: string;
+
+  // Dedicated admin user for PAT demotion test
+  let adminDemotedUser: { id: string; email: string };
+  let demotedTokenSecret: string;
 
   // Workspace 1 seeded resources for cross-tenant assertions
   let userA: { id: string; email: string };
@@ -276,14 +285,102 @@ describeIntegration("isolation integration suite", () => {
     };
     tokenA = tokenABody.token;
     tokenASecret = tokenABody.secret;
+
+    // -------------------------------------------------------------------------
+    // 5. Member User: sign up with x-app-id: au1h-admin and join Org 1 as "member"
+    // -------------------------------------------------------------------------
+    const memberEmail = `member-${run}@admin.test`;
+    const resMember = await authPost(h.app, "au1h-admin", "/sign-up/email", {
+      email: memberEmail,
+      password: "Password123!",
+      name: "Workspace Member",
+    });
+    if (resMember.status !== 200) {
+      throw new Error(`Member signup failed: ${resMember.status}`);
+    }
+    cookieMember = cookiesOf(resMember);
+
+    const [uMember] = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.email, memberEmail));
+    memberUser = uMember as { id: string; email: string };
+
+    await db.insert(members).values({
+      id: crypto.randomUUID(),
+      organizationId: h.orgId,
+      userId: memberUser.id,
+      role: "member",
+      createdAt: new Date(),
+    });
+
+    const setActiveMember = await h.app.fetch(
+      new Request(`${BASE()}/api/auth/organization/set-active`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-app-id": "au1h-admin",
+          cookie: cookieMember,
+        },
+        body: JSON.stringify({ organizationId: h.orgId }),
+      })
+    );
+    if (setActiveMember.status !== 200) {
+      throw new Error(`Member set-active failed: ${setActiveMember.status}`);
+    }
+    if (setActiveMember.headers.getSetCookie().length > 0) {
+      cookieMember = mergeCookies(cookieMember, cookiesOf(setActiveMember));
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. Admin user for PAT demotion test: join Org 1 as "admin" and mint a PAT
+    // -------------------------------------------------------------------------
+    const adminDemotedEmail = `admindemote-${run}@admin.test`;
+    const resAdminDemoted = await authPost(
+      h.app,
+      "au1h-admin",
+      "/sign-up/email",
+      {
+        email: adminDemotedEmail,
+        password: "Password123!",
+        name: "Admin Demote",
+      }
+    );
+    if (resAdminDemoted.status !== 200) {
+      throw new Error(`Admin demoted signup failed: ${resAdminDemoted.status}`);
+    }
+
+    const [uDemoted] = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.email, adminDemotedEmail));
+    adminDemotedUser = uDemoted as { id: string; email: string };
+
+    await db.insert(members).values({
+      id: crypto.randomUUID(),
+      organizationId: h.orgId,
+      userId: adminDemotedUser.id,
+      role: "admin",
+      createdAt: new Date(),
+    });
+
+    const { secret: patSecret } = await createToken({
+      userId: adminDemotedUser.id,
+      organizationId: h.orgId,
+      name: "Demote PAT",
+    });
+    demotedTokenSecret = patSecret;
   }, 60_000);
 
   afterAll(async () => {
     try {
       // Clean up verification rows for App C and only the admin emails created in this run
-      const adminEmails = [admin1User?.email, admin2User?.email].filter(
-        Boolean
-      ) as string[];
+      const adminEmails = [
+        admin1User?.email,
+        admin2User?.email,
+        memberUser?.email,
+        adminDemotedUser?.email,
+      ].filter(Boolean) as string[];
       const verificationConditions: (SQL | undefined)[] = [];
       if (appC?.id) {
         verificationConditions.push(
@@ -299,11 +396,14 @@ describeIntegration("isolation integration suite", () => {
         await db.delete(verifications).where(or(...verificationConditions));
       }
 
-      // Look up member rows of the two admin users, collect their organisation
+      // Look up member rows of the admin users, collect their organisation
       // IDs except h.orgId and org2Id, and delete them by ID (auto-created personal workspaces)
-      const adminIds = [admin1User?.id, admin2User?.id].filter(
-        Boolean
-      ) as string[];
+      const adminIds = [
+        admin1User?.id,
+        admin2User?.id,
+        memberUser?.id,
+        adminDemotedUser?.id,
+      ].filter(Boolean) as string[];
       if (adminIds.length > 0) {
         const adminMemberships = await db
           .select({ organizationId: members.organizationId })
@@ -797,10 +897,285 @@ describeIntegration("isolation integration suite", () => {
       const meData = (await meRes.json()) as {
         user: { id: string; email: string };
         organization: { id: string };
+        role?: string;
       };
       expect(meData.organization.id).toBe(org2Id);
       expect(meData.user.id).toBe(admin2User.id);
       expect(meData.organization.id).not.toBe(h.orgId);
+      expect(meData.role).toBe("owner");
+    });
+
+    // -------------------------------------------------------------------------
+    // Workspace roles (owner | admin | member)
+    // -------------------------------------------------------------------------
+    describe("workspace roles", () => {
+      test("member role: mutating routes return 403, reading routes return 200", async () => {
+        // Enumerate every mutating route from src/*/route.ts
+        const mutatingRoutes: {
+          name: string;
+          method: string;
+          path: string;
+          body?: unknown;
+        }[] = [
+          // applications
+          {
+            name: "POST /api/v1/applications",
+            method: "POST",
+            path: "/api/v1/applications",
+            body: {
+              name: "Forbidden App",
+              slug: `forbidden-${run}`,
+              allowedOrigins: "http://forbidden.test",
+            },
+          },
+          {
+            name: "PUT /api/v1/applications/:id",
+            method: "PUT",
+            path: `/api/v1/applications/${h.apps.a.id}`,
+            body: { name: "Updated Forbidden" },
+          },
+          {
+            name: "POST /api/v1/applications/:id/regenerate-secret",
+            method: "POST",
+            path: `/api/v1/applications/${h.apps.a.id}/regenerate-secret`,
+          },
+          {
+            name: "DELETE /api/v1/applications/:id",
+            method: "DELETE",
+            path: `/api/v1/applications/${h.apps.a.id}`,
+          },
+          // routes
+          {
+            name: "POST /api/v1/routes",
+            method: "POST",
+            path: "/api/v1/routes",
+            body: {
+              applicationId: h.apps.a.id,
+              name: "Forbidden Route",
+              pathPattern: "/forbidden/*",
+              backendUrl: "https://backend.example.com",
+              methods: ["GET"],
+            },
+          },
+          {
+            name: "PUT /api/v1/routes/:id",
+            method: "PUT",
+            path: `/api/v1/routes/${routeA.id}`,
+            body: {
+              name: "Updated Route",
+              pathPattern: "/updated/*",
+              backendUrl: "https://backend.example.com",
+              methods: ["GET"],
+            },
+          },
+          {
+            name: "PATCH /api/v1/routes/:id/toggle",
+            method: "PATCH",
+            path: `/api/v1/routes/${routeA.id}/toggle`,
+            body: { isActive: false },
+          },
+          {
+            name: "DELETE /api/v1/routes/:id",
+            method: "DELETE",
+            path: `/api/v1/routes/${routeA.id}`,
+          },
+          // tokens
+          {
+            name: "POST /api/v1/tokens",
+            method: "POST",
+            path: "/api/v1/tokens",
+            body: { name: "Forbidden Token" },
+          },
+          {
+            name: "DELETE /api/v1/tokens/:id",
+            method: "DELETE",
+            path: `/api/v1/tokens/${tokenA.id}`,
+          },
+          // users
+          {
+            name: "POST /api/v1/users/:id/ban",
+            method: "POST",
+            path: `/api/v1/users/${userA.id}/ban`,
+          },
+          {
+            name: "POST /api/v1/users/:id/unban",
+            method: "POST",
+            path: `/api/v1/users/${userA.id}/unban`,
+          },
+          {
+            name: "DELETE /api/v1/users/:id/sessions",
+            method: "DELETE",
+            path: `/api/v1/users/${userA.id}/sessions`,
+          },
+          {
+            name: "DELETE /api/v1/users/sessions/:sessionId",
+            method: "DELETE",
+            path: `/api/v1/users/sessions/${sessionA.id}`,
+          },
+        ];
+
+        for (const r of mutatingRoutes) {
+          const res = await h.app.fetch(
+            new Request(`${BASE()}${r.path}`, {
+              method: r.method,
+              headers: {
+                ...(r.body ? { "content-type": "application/json" } : {}),
+                cookie: cookieMember,
+              },
+              body: r.body ? JSON.stringify(r.body) : undefined,
+            })
+          );
+          expect(res.status).toBe(403);
+          const body = (await res.json()) as { error?: string };
+          expect(body).toEqual({
+            error: "Requires the owner or admin role",
+          });
+        }
+
+        // Enumerate every reading route from src/*/route.ts
+        const readingRoutes: { name: string; path: string }[] = [
+          // applications
+          {
+            name: "GET /api/v1/applications",
+            path: "/api/v1/applications",
+          },
+          {
+            name: "GET /api/v1/applications/:id",
+            path: `/api/v1/applications/${h.apps.a.id}`,
+          },
+          // routes
+          {
+            name: "GET /api/v1/routes",
+            path: "/api/v1/routes",
+          },
+          {
+            name: "GET /api/v1/routes/:id",
+            path: `/api/v1/routes/${routeA.id}`,
+          },
+          // tokens
+          {
+            name: "GET /api/v1/tokens",
+            path: "/api/v1/tokens",
+          },
+          // users
+          {
+            name: "GET /api/v1/users",
+            path: "/api/v1/users",
+          },
+          {
+            name: "GET /api/v1/users/:id",
+            path: `/api/v1/users/${userA.id}`,
+          },
+          {
+            name: "GET /api/v1/users/:id/sessions",
+            path: `/api/v1/users/${userA.id}/sessions`,
+          },
+          // me
+          {
+            name: "GET /api/v1/me",
+            path: "/api/v1/me",
+          },
+        ];
+
+        for (const r of readingRoutes) {
+          const res = await h.app.fetch(
+            new Request(`${BASE()}${r.path}`, {
+              method: "GET",
+              headers: { cookie: cookieMember },
+            })
+          );
+          expect(res.status).toBe(200);
+          if (r.path === "/api/v1/me") {
+            const meData = (await res.json()) as {
+              role?: string;
+              organization: { id: string };
+            };
+            expect(meData.role).toBe("member");
+            expect(meData.organization.id).toBe(h.orgId);
+          }
+        }
+      });
+
+      test("PAT role enforcement: owner can mutate, demoted member gets 403 without re-login, removed member gets 401", async () => {
+        // 1. Owner PAT (tokenASecret) can mutate routes
+        const ownerMutateRes = await h.app.fetch(
+          new Request(`${BASE()}/api/v1/routes/${routeA.id}/toggle`, {
+            method: "PATCH",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${tokenASecret}`,
+            },
+            body: JSON.stringify({ isActive: false }),
+          })
+        );
+        expect(ownerMutateRes.status).toBe(200);
+
+        // 2. Admin PAT (demotedTokenSecret) can mutate while role is "admin"
+        const adminMutateRes = await h.app.fetch(
+          new Request(`${BASE()}/api/v1/routes/${routeA.id}/toggle`, {
+            method: "PATCH",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${demotedTokenSecret}`,
+            },
+            body: JSON.stringify({ isActive: true }),
+          })
+        );
+        expect(adminMutateRes.status).toBe(200);
+
+        // 3. Demote user's role to "member" in database
+        await db
+          .update(members)
+          .set({ role: "member" })
+          .where(
+            and(
+              eq(members.userId, adminDemotedUser.id),
+              eq(members.organizationId, h.orgId)
+            )
+          );
+
+        // 4. Same token without re-minting or re-login immediately gets 403 on mutation
+        const demotedMutateRes = await h.app.fetch(
+          new Request(`${BASE()}/api/v1/routes/${routeA.id}/toggle`, {
+            method: "PATCH",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${demotedTokenSecret}`,
+            },
+            body: JSON.stringify({ isActive: false }),
+          })
+        );
+        expect(demotedMutateRes.status).toBe(403);
+        expect(await demotedMutateRes.json()).toEqual({
+          error: "Requires the owner or admin role",
+        });
+
+        // 5. Demoted PAT can still read
+        const demotedReadRes = await h.app.fetch(
+          new Request(`${BASE()}/api/v1/routes`, {
+            headers: { authorization: `Bearer ${demotedTokenSecret}` },
+          })
+        );
+        expect(demotedReadRes.status).toBe(200);
+
+        // 6. Delete membership: user is no longer a member of the workspace
+        await db
+          .delete(members)
+          .where(
+            and(
+              eq(members.userId, adminDemotedUser.id),
+              eq(members.organizationId, h.orgId)
+            )
+          );
+
+        // 7. Token whose owner is no longer a member resolves to null (401 Unauthorized)
+        const removedMemberRes = await h.app.fetch(
+          new Request(`${BASE()}/api/v1/routes`, {
+            headers: { authorization: `Bearer ${demotedTokenSecret}` },
+          })
+        );
+        expect(removedMemberRes.status).toBe(401);
+      });
     });
   });
 
