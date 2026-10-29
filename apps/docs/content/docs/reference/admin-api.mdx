@@ -15,16 +15,62 @@ Scripts, CI and the `au1h` CLI authenticate with a
 Authorization: Bearer au1h_pat_…
 ```
 
+## Workspace roles & permissions
+
+Access within an admin workspace is role-based. Roles are stored on the workspace membership (`members` table) and evaluated on every request.
+
+| Role | Access | Description |
+| ---- | ------ | ----------- |
+| `owner` | Read & Write | Full administrative access to workspace applications, proxy routes, API tokens, and users. |
+| `admin` | Read & Write | Full administrative access to workspace applications, proxy routes, API tokens, and users. |
+| `member` | Read-only | Can read all workspace resources (`GET`), but cannot mutate anything. |
+
+### Role enforcement and 403 response
+
+All mutating routes (`POST`, `PUT`, `PATCH`, `DELETE`) require the `owner` or `admin` role. If a caller with the `member` role attempts to invoke a mutating route (via admin session or personal access token), the API refuses the request with `403 Forbidden`:
+
+```json
+{
+  "error": "Requires the owner or admin role"
+}
+```
+
+For personal access tokens (PAT), the role is live-joined from the user's workspace membership on every request. If a member's role changes, their existing tokens immediately reflect the new permissions without re-issuing the token. If the user is removed from the workspace, their tokens immediately return `401 Unauthorized`.
+
+## Identity & workspace
+
+| Endpoint       | Method | Description |
+| -------------- | ------ | ----------- |
+| `/api/v1/me`   | GET    | Returns identity, active workspace, resolved role (`owner`, `admin`, or `member`), and authentication method (`session` or `token`). |
+
+Response:
+
+```json
+{
+  "user": {
+    "id": "usr_...",
+    "email": "admin@example.com"
+  },
+  "organization": {
+    "id": "org_...",
+    "name": "Acme Corp",
+    "slug": "acme-corp"
+  },
+  "role": "owner",
+  "authVia": "session"
+}
+```
+
 ## Applications
 
-| Endpoint                                   | Method | Body / notes                                    |
-| ------------------------------------------ | ------ | ----------------------------------------------- |
-| `/api/v1/applications`                     | GET    | List with user and session counts              |
-| `/api/v1/applications/:id`                 | GET    |                                                  |
-| `/api/v1/applications`                     | POST   | `{ name, slug, allowedOrigins?, redirectUris?, logo? }` → `{ application, secret }` |
-| `/api/v1/applications/:id`                 | PUT    | Same fields plus `isActive`, `organizationsEnabled` |
-| `/api/v1/applications/:id`                 | DELETE |                                                  |
-| `/api/v1/applications/:id/regenerate-secret` | POST | `{ secret }`, shown once                        |
+| Endpoint                                     | Method | Role required | Body / notes                                    |
+| -------------------------------------------- | ------ | ------------- | ----------------------------------------------- |
+| `/api/v1/applications`                       | GET    | Any member    | List with user and session counts              |
+| `/api/v1/applications/:id`                   | GET    | Any member    | Retrieve application details                   |
+| `/api/v1/applications`                       | POST   | Owner, Admin  | `{ name, slug, allowedOrigins?, redirectUris?, logo? }` → `{ application, secret }` |
+| `/api/v1/applications/:id`                   | PUT    | Owner, Admin  | Same fields plus `isActive`, `organizationsEnabled` |
+| `/api/v1/applications/:id`                   | DELETE | Owner, Admin  | Delete application                             |
+| `/api/v1/applications/:id/regenerate-secret` | POST   | Owner, Admin  | `{ secret }`, shown once                        |
 
 `slug` is lowercase letters, digits and hyphens; `au1h-admin` is reserved.
 `allowedOrigins` and `redirectUris` are comma-separated strings.
@@ -33,25 +79,36 @@ Authorization: Bearer au1h_pat_…
 
 Users of your workspace's applications, plus your workspace's own members.
 
-| Endpoint                                | Method | Notes                                    |
-| --------------------------------------- | ------ | ---------------------------------------- |
-| `/api/v1/users?applicationId=&search=&page=&limit=` | GET | Paginated                       |
-| `/api/v1/users/:id`                     | GET    |                                          |
-| `/api/v1/users/:id/sessions`            | GET    |                                          |
-| `/api/v1/users/:id/ban`                 | POST   | `{ reason?, expiresAt? }`; revokes sessions |
-| `/api/v1/users/:id/unban`               | POST   |                                          |
-| `/api/v1/users/:id/sessions`            | DELETE | Revoke all                               |
-| `/api/v1/users/sessions/:sessionId`     | DELETE | Revoke one                               |
+| Endpoint                                             | Method | Role required | Notes                                       |
+| ---------------------------------------------------- | ------ | ------------- | ------------------------------------------- |
+| `/api/v1/users?applicationId=&search=&page=&limit=`  | GET    | Any member    | Paginated user list                         |
+| `/api/v1/users/:id`                                  | GET    | Any member    | User profile                                |
+| `/api/v1/users/:id/sessions`                         | GET    | Any member    | Active user sessions                        |
+| `/api/v1/users/:id/ban`                              | POST   | Owner, Admin  | `{ reason?, expiresAt? }`; revokes sessions |
+| `/api/v1/users/:id/unban`                            | POST   | Owner, Admin  | Lift active ban                             |
+| `/api/v1/users/:id/sessions`                         | DELETE | Owner, Admin  | Revoke all active sessions                  |
+| `/api/v1/users/sessions/:sessionId`                  | DELETE | Owner, Admin  | Revoke single session                       |
 
 ## Proxy routes
 
-| Endpoint                     | Method | Body                                                        |
-| ---------------------------- | ------ | ----------------------------------------------------------- |
-| `/api/v1/routes?applicationId=` | GET |                                                             |
-| `/api/v1/routes`             | POST   | `{ applicationId, name, pathPattern, backendUrl, methods, stripPrefix? }` |
-| `/api/v1/routes/:id`         | PUT    | Any of the above plus `isActive`                            |
-| `/api/v1/routes/:id/toggle`  | PATCH  | `{ isActive }`                                              |
-| `/api/v1/routes/:id`         | DELETE |                                                             |
+| Endpoint                         | Method | Role required | Body                                                                      |
+| -------------------------------- | ------ | ------------- | ------------------------------------------------------------------------- |
+| `/api/v1/routes?applicationId=`  | GET    | Any member    | List proxy routes                                                         |
+| `/api/v1/routes/:id`             | GET    | Any member    | Retrieve proxy route                                                      |
+| `/api/v1/routes`                 | POST   | Owner, Admin  | `{ applicationId, name, pathPattern, backendUrl, methods, stripPrefix? }` |
+| `/api/v1/routes/:id`             | PUT    | Owner, Admin  | Any of the above plus `isActive`                                          |
+| `/api/v1/routes/:id/toggle`      | PATCH  | Owner, Admin  | `{ isActive }`                                                            |
+| `/api/v1/routes/:id`             | DELETE | Owner, Admin  | Delete route                                                              |
 
 The application must belong to your workspace. `backendUrl` must be `http(s)` without
 credentials; private and loopback targets are refused in production.
+
+## API tokens
+
+Personal access tokens for CI, CLI, and scripts.
+
+| Endpoint              | Method | Role required | Notes                                              |
+| --------------------- | ------ | ------------- | -------------------------------------------------- |
+| `/api/v1/tokens`      | GET    | Any member    | List active personal access tokens for caller      |
+| `/api/v1/tokens`      | POST   | Owner, Admin  | `{ name, expiresInDays? }` (session auth required) |
+| `/api/v1/tokens/:id`  | DELETE | Owner, Admin  | Revoke personal access token                       |
