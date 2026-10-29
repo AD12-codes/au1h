@@ -15,6 +15,10 @@ jobs:
       - run: bun x biome check .
       - run: bun run --filter './packages/*' build
       - run: bun run check-types
+      # The portal and docs are only built by the image workflow on main otherwise;
+      # a broken Vite/Next build or stale route tree should fail the PR instead.
+      - run: bun run --filter './apps/web' build
+      - run: bun run --filter './apps/docs' build
       # No .env in CI on purpose: unit tests must not need a database.
       - run: cd apps/server && bun --env-file=/dev/null test
       - uses: actions/setup-go@v5
