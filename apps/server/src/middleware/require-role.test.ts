@@ -56,7 +56,7 @@ describe("requireRole middleware", () => {
     const res = await app.request("/owner-only", { method: "POST" });
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({
-      error: "Requires the owner or admin role",
+      error: "Requires the owner role",
     });
   });
 });

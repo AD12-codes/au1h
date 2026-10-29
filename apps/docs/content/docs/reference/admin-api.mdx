@@ -23,11 +23,11 @@ Access within an admin workspace is role-based. Roles are stored on the workspac
 | ---- | ------ | ----------- |
 | `owner` | Read & Write | Full administrative access to workspace applications, proxy routes, API tokens, and users. |
 | `admin` | Read & Write | Full administrative access to workspace applications, proxy routes, API tokens, and users. |
-| `member` | Read-only | Can read all workspace resources (`GET`), but cannot mutate anything. |
+| `member` | Read-only | Can read all workspace resources (`GET`) and manage self-service personal access tokens, but cannot mutate workspace resources. |
 
 ### Role enforcement and 403 response
 
-All mutating routes (`POST`, `PUT`, `PATCH`, `DELETE`) require the `owner` or `admin` role. If a caller with the `member` role attempts to invoke a mutating route (via admin session or personal access token), the API refuses the request with `403 Forbidden`:
+All mutating routes on workspace resources (applications, proxy routes, users) require the `owner` or `admin` role. If a caller with the `member` role attempts to invoke a restricted mutating route (via admin session or personal access token), the API refuses the request with `403 Forbidden`:
 
 ```json
 {
@@ -35,7 +35,7 @@ All mutating routes (`POST`, `PUT`, `PATCH`, `DELETE`) require the `owner` or `a
 }
 ```
 
-For personal access tokens (PAT), the role is live-joined from the user's workspace membership on every request. If a member's role changes, their existing tokens immediately reflect the new permissions without re-issuing the token. If the user is removed from the workspace, their tokens immediately return `401 Unauthorized`.
+Personal access tokens (`/api/v1/tokens`) are self-service per-caller: any workspace member can create and revoke their own tokens for CLI and script use. The token live-inherits the caller's role, so a token minted by a member is strictly read-only on workspace resources. If a member's role changes, their existing tokens immediately reflect the new permissions without re-issuing the token. If the user is removed from the workspace, their tokens immediately return `401 Unauthorized`.
 
 ## Identity & workspace
 
@@ -105,10 +105,10 @@ credentials; private and loopback targets are refused in production.
 
 ## API tokens
 
-Personal access tokens for CI, CLI, and scripts.
+Personal access tokens for CI, CLI, and scripts. Tokens inherit the caller's live role and are scoped to the caller's active workspace.
 
 | Endpoint              | Method | Role required | Notes                                              |
 | --------------------- | ------ | ------------- | -------------------------------------------------- |
 | `/api/v1/tokens`      | GET    | Any member    | List active personal access tokens for caller      |
-| `/api/v1/tokens`      | POST   | Owner, Admin  | `{ name, expiresInDays? }` (session auth required) |
-| `/api/v1/tokens/:id`  | DELETE | Owner, Admin  | Revoke personal access token                       |
+| `/api/v1/tokens`      | POST   | Any member    | `{ name, expiresInDays? }` (session auth required) |
+| `/api/v1/tokens/:id`  | DELETE | Any member    | Revoke personal access token for caller            |

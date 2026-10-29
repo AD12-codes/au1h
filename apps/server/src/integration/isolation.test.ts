@@ -979,18 +979,6 @@ describeIntegration("isolation integration suite", () => {
             method: "DELETE",
             path: `/api/v1/routes/${routeA.id}`,
           },
-          // tokens
-          {
-            name: "POST /api/v1/tokens",
-            method: "POST",
-            path: "/api/v1/tokens",
-            body: { name: "Forbidden Token" },
-          },
-          {
-            name: "DELETE /api/v1/tokens/:id",
-            method: "DELETE",
-            path: `/api/v1/tokens/${tokenA.id}`,
-          },
           // users
           {
             name: "POST /api/v1/users/:id/ban",
@@ -1030,7 +1018,48 @@ describeIntegration("isolation integration suite", () => {
           expect(body).toEqual({
             error: "Requires the owner or admin role",
           });
+
+          // After PUT /applications/:id attempt, GET application as owner and assert state was not mutated
+          if (r.name === "PUT /api/v1/applications/:id") {
+            const getAppRes = await h.app.fetch(
+              new Request(`${BASE()}/api/v1/applications/${h.apps.a.id}`, {
+                headers: { cookie: cookieAdmin1 },
+              })
+            );
+            expect(getAppRes.status).toBe(200);
+            const getAppData = (await getAppRes.json()) as {
+              application: { name: string };
+            };
+            expect(getAppData.application.name).toBe(h.apps.a.name);
+            expect(getAppData.application.name).not.toBe("Updated Forbidden");
+          }
         }
+
+        // Tokens are self-service: member can create and revoke their own token
+        const createTokenRes = await h.app.fetch(
+          new Request(`${BASE()}/api/v1/tokens`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              cookie: cookieMember,
+            },
+            body: JSON.stringify({ name: "Member Self-Service Token" }),
+          })
+        );
+        expect(createTokenRes.status).toBe(201);
+        const createdToken = (await createTokenRes.json()) as {
+          token: { id: string };
+          secret: string;
+        };
+        expect(createdToken.token.id).toBeDefined();
+
+        const revokeTokenRes = await h.app.fetch(
+          new Request(`${BASE()}/api/v1/tokens/${createdToken.token.id}`, {
+            method: "DELETE",
+            headers: { cookie: cookieMember },
+          })
+        );
+        expect(revokeTokenRes.status).toBe(200);
 
         // Enumerate every reading route from src/*/route.ts
         const readingRoutes: { name: string; path: string }[] = [
