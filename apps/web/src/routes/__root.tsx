@@ -17,17 +17,74 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
   head: () => ({
     meta: [
       {
-        title: "au1h",
+        title: "au1h admin",
       },
       {
         name: "description",
-        content: "au1h admin portal",
+        content:
+          "au1h admin portal — manage applications, users, sessions and gateway proxy routes.",
+      },
+      {
+        property: "og:type",
+        content: "website",
+      },
+      {
+        property: "og:site_name",
+        content: "au1h admin",
+      },
+      {
+        property: "og:title",
+        content: "au1h admin",
+      },
+      {
+        property: "og:description",
+        content:
+          "au1h admin portal — manage applications, users, sessions and gateway proxy routes.",
+      },
+      {
+        property: "og:image",
+        content: "/og-image.png",
+      },
+      {
+        name: "twitter:card",
+        content: "summary_large_image",
+      },
+      {
+        name: "twitter:title",
+        content: "au1h admin",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "au1h admin portal — manage applications, users, sessions and gateway proxy routes.",
+      },
+      {
+        name: "twitter:image",
+        content: "/og-image.png",
+      },
+      {
+        name: "theme-color",
+        content: "#2F80FF",
       },
     ],
     links: [
       {
         rel: "icon",
         href: "/favicon.ico",
+        sizes: "32x32",
+      },
+      {
+        rel: "icon",
+        type: "image/svg+xml",
+        href: "/favicon.svg",
+      },
+      {
+        rel: "apple-touch-icon",
+        href: "/apple-touch-icon.png",
+      },
+      {
+        rel: "manifest",
+        href: "/site.webmanifest",
       },
     ],
   }),

@@ -1,0 +1,26 @@
+{
+  "name": "au1h — One auth server for all of your apps",
+  "short_name": "au1h",
+  "description": "Self-hosted multi-tenant auth service built on Better Auth. One deployment, isolated users and credentials per application.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070a10",
+  "theme_color": "#2F80FF",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
