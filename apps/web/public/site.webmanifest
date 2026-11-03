@@ -1,0 +1,26 @@
+{
+  "name": "au1h Admin Portal",
+  "short_name": "au1h Admin",
+  "description": "au1h admin portal — manage applications, users, sessions and gateway proxy routes.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#070a10",
+  "theme_color": "#2F80FF",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
