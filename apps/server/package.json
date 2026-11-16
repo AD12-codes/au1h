@@ -13,7 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "test": "bun test",
-    "test:integration": "AU1H_INTEGRATION_TESTS=1 LOG_LEVEL=silent bun test integration",
+    "test:integration": "AU1H_INTEGRATION_TESTS=1 LOG_LEVEL=silent bun --env-file=/dev/null test integration",
     "migrate": "bun run src/db/migrate.ts"
   },
   "dependencies": {

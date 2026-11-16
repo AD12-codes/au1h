@@ -6,10 +6,36 @@
  * so the plain unit-test run never needs a database. Everything is imported
  * lazily because loading the auth module connects to Redis.
  */
+import { type Server, serve } from "bun";
 import type { Hono } from "hono";
 import type { EmailMessage } from "../lib/email/types";
 
 export const INTEGRATION = process.env.AU1H_INTEGRATION_TESTS === "1";
+
+/**
+ * The app also listens on a real loopback port. Most tests call `app.fetch`
+ * in-process, but anything that fetches the server's own URL over HTTP (the
+ * gateway verifying a bearer JWT against `/api/auth/jwks`) needs a listener,
+ * and it must be *this* instance: a developer's `bun dev` on :4444 serves a
+ * different database and different signing keys. The port is chosen before
+ * any server module loads, because `BETTER_AUTH_URL` is read at import time.
+ */
+let listenPort: number | null = null;
+let listener: Server<undefined> | null = null;
+if (INTEGRATION) {
+  const probe = serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () => new Response(),
+  });
+  listenPort = probe.port ?? null;
+  probe.stop(true);
+  process.env.BETTER_AUTH_URL = `http://127.0.0.1:${listenPort}`;
+}
+
+/** This test instance's own URL (`BETTER_AUTH_URL`). */
+export const baseUrl = (): string =>
+  process.env.BETTER_AUTH_URL ?? "http://localhost:4444";
 
 export interface TestApp {
   id: string;
@@ -39,8 +65,14 @@ export async function startHarness(): Promise<Harness> {
   }
   process.env.EMAIL_PROVIDER = "memory";
   process.env.NODE_ENV ??= "test";
-  process.env.BETTER_AUTH_URL ??= "http://localhost:4444";
-  process.env.BETTER_AUTH_SECRET ??= "integration-test-secret-not-for-prod";
+  // The suite asserts the defaults; `bun run test:integration` also ignores
+  // the developer's `.env` so a local setting cannot change what is tested.
+  process.env.AU1H_REQUIRE_EMAIL_VERIFICATION = "false";
+  process.env.AU1H_SEND_VERIFICATION_ON_SIGNUP = "true";
+  // Always the same secret: Better Auth encrypts the JWT signing keys it
+  // stores in the database with it, so a test database created under one
+  // secret cannot mint tokens under another (e.g. a developer's `.env`).
+  process.env.BETTER_AUTH_SECRET = "integration-test-secret-not-for-prod";
 
   const { migrate } = await import("drizzle-orm/node-postgres/migrator");
   const { db, initializeDatabase } = await import("../db");
@@ -56,6 +88,16 @@ export async function startHarness(): Promise<Harness> {
   const { createApplication } = await import("../applications/service");
   const { clearOutbox, getOutbox } = await import("../lib/email/providers");
   const { app } = await import("../app");
+
+  if (listenPort !== null && !listener) {
+    listener = serve({
+      port: listenPort,
+      hostname: "127.0.0.1",
+      // Bun passes the server as the second argument; Hono exposes it as
+      // `c.env`, which is where `getConnInfo` reads the socket address.
+      fetch: (req, server) => app.fetch(req, server),
+    });
+  }
 
   const run = Math.random().toString(36).slice(2, 8);
   const orgId = crypto.randomUUID();
@@ -108,13 +150,14 @@ export async function startHarness(): Promise<Harness> {
       await db
         .delete(applications)
         .where(eq(applications.organizationId, orgId));
-      // The pool and the Redis client are process-wide singletons shared by
-      // every test file in this run, so they stay open; bun exits regardless.
+      // The pool, the Redis client and the HTTP listener are process-wide
+      // singletons shared by every test file in this run, so they stay open;
+      // bun exits regardless.
     },
   };
 }
 
-const BASE = () => process.env.BETTER_AUTH_URL ?? "http://localhost:4444";
+const BASE = baseUrl;
 
 /** Call a Better Auth endpoint as an app's frontend would: JSON + `x-app-id`. */
 export async function authPost(

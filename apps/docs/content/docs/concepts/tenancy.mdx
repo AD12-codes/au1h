@@ -43,6 +43,31 @@ per-endpoint code to get wrong.
 - **Bans and revocations are per application.** Banning `john@example.com` in `todo`
   does not touch his account in `books`.
 
+## Identity and recovery across applications
+
+The per-application boundary is easy to state and easy to forget when an address shows up in
+more than one app. Every account flow stays inside the app that started it:
+
+- **Password reset.** A reset requested with `x-app-id: todo` emails only `todo`'s user and
+  the link can only change `todo`'s password. If the same address also exists in `books`,
+  that account is untouched and gets no email. A reset link re-pointed at another app with
+  `?app=` is rejected.
+- **Email verification.** Verified in `todo` means nothing in `books`; the address verifies
+  again there, with its own link.
+- **Magic links and one-time codes.** Valid only for the app that sent them.
+- **OAuth.** Signing in with the same GitHub or Google account in two apps creates two users
+  with two account links. Unlinking in one does not unlink the other.
+- **Bans and session revocation.** Per app. A compromised address has to be handled in each
+  app it exists in.
+- **Admin accounts.** An admin-portal account and an end-user account with the same address
+  are unrelated users with separate passwords.
+
+There is no implicit merge by email address, because the boundary is a security property:
+a recovery flow in one app must never be a way into another. Moving accounts between
+applications is an explicit, admin-initiated operation (planned; see the roadmap). If
+several applications should share one identity from the start, that is the shared user
+pool on the roadmap rather than a migration.
+
 ## The admin scope
 
 Admin-portal users have no `application_id`. They are grouped into **workspaces** (Better
