@@ -18,7 +18,7 @@ On the application page in the admin portal, **Proxy routes → Add route**:
 
 | Field        | Example                 | Notes                                             |
 | ------------ | ----------------------- | ------------------------------------------------- |
-| Path pattern | `/todos/*` or `/todos/:id` | Matched against the path after `/proxy`        |
+| Path pattern | `/todos/*` or `/todos/:id` | Matched against the path after `/proxy`. `/todos/*` also matches the bare `/todos`; `:id` matches exactly one segment |
 | Backend URL  | `http://todo-api:8080`  | `http(s)` only, no credentials. In production, private and loopback addresses are refused unless `AU1H_PROXY_ALLOW_PRIVATE_BACKENDS=true` |
 | Methods      | `GET, POST`             |                                                   |
 | Strip prefix | on                      | Forward only the part after the matched prefix    |
@@ -46,8 +46,12 @@ au1h strips any client-supplied `x-user-*` / `x-app-*` headers and injects:
 | `x-au1h-token` | A 60-second JWT signed by au1h with `aud` = your slug and `sub` = the user |
 
 Requests are forwarded **only** if the caller presented a valid session cookie or JWT that
-belongs to the route's application. Anonymous calls get 401; another app's credentials get
-403.
+belongs to the route's application. Anonymous calls get 401. Credentials from another
+application also get 401, not 403: a session or token issued for app B does not exist from
+app A's point of view, so the gateway cannot tell it apart from no credentials at all. The
+gateway's own `x-au1h-token` is rejected as a bearer token. A request that matches no route
+(unknown app, unmatched path, or a method the route does not list) gets 404 before any
+credential is looked at, so a 404 says nothing about whether the caller is signed in.
 
 ## Trusting the headers
 
@@ -58,5 +62,10 @@ JWKS. The SDKs provide `requireAu1hProxy(verifier)` for exactly this.
 ## Limits
 
 Streaming request bodies are supported. The backend call times out after
-`AU1H_PROXY_TIMEOUT_MS` (default 30 s) with a 504. Backend `Set-Cookie` headers are passed
-through unchanged.
+`AU1H_PROXY_TIMEOUT_MS` (default 30 s) with a 504, and an unreachable backend answers 502.
+Backend `Set-Cookie` headers are passed through unchanged. Backend redirects are relayed to
+the client as-is and never followed by au1h, so a backend cannot turn the gateway into a
+proxy for a third address.
+
+Every promise on this page is asserted by the gateway integration tests in
+`apps/server/src/integration/gateway.test.ts`, against a real backend.

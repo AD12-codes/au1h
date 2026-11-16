@@ -59,7 +59,10 @@ things make that hold:
 In practice: a password reset requested in app A cannot change the password
 of the same address in app B, a magic link for A does not sign in to B, and a
 code requested in A is "invalid" when presented to B. The integration tests
-under `apps/server/src/integration` assert each of these.
+under `apps/server/src/integration` assert each of these. For the full list of
+what does and does not carry across applications, including verification,
+OAuth links and bans, see
+[Identity and recovery across applications](/docs/concepts/tenancy#identity-and-recovery-across-applications).
 
 ## Options
 

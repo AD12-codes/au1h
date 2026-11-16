@@ -50,10 +50,11 @@ interface ProxyContext {
   clientIp: string;
 }
 
-const PROXY_TIMEOUT_MS = Number.parseInt(
-  process.env.AU1H_PROXY_TIMEOUT_MS ?? "30000",
-  10
-);
+/** Backend timeout, read per request so it can be tuned without a restart. */
+function proxyTimeoutMs(): number {
+  const parsed = Number.parseInt(process.env.AU1H_PROXY_TIMEOUT_MS ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
+}
 
 type AuthResult =
   | { ok: true; userId: string; userEmail: string; via: "jwt" | "session" }
@@ -291,7 +292,7 @@ export function createProxyMiddleware(basePath: string) {
         // answering `302 Location: http://169.254.169.254/` must not turn the
         // gateway into an SSRF proxy carrying the injected headers.
         redirect: "manual",
-        signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
+        signal: AbortSignal.timeout(proxyTimeoutMs()),
         // Required by the fetch spec when sending a streaming body.
         ...(body ? { duplex: "half" as const } : {}),
       } as RequestInit);

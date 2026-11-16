@@ -29,9 +29,12 @@ description: Every header au1h reads or writes.
 | `x-au1h-token`      | 60-second au1h-signed JWT, `aud` = slug, `sub` = user id    |
 | `x-forwarded-host`  | The host the client used                                    |
 | `x-forwarded-proto` | The scheme the client used                                  |
-| `x-forwarded-for`   | Client address                                              |
+| `x-forwarded-for`   | Client address as au1h determined it: the socket address, or the last `x-forwarded-for` hop when `AU1H_TRUST_PROXY=true` |
 
-Any `x-user-*` or `x-app-*` header supplied by the client is stripped before forwarding.
+Any `x-user-*` or `x-app-*` header supplied by the client is replaced before forwarding.
+Client-sent `x-forwarded-for`, `x-forwarded-host`, `x-real-ip` and `proxy-authorization`
+are dropped as well. Other request headers, including `Authorization` and `Cookie`, are
+forwarded unchanged.
 
 ## Response headers
 

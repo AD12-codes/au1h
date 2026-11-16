@@ -30,6 +30,7 @@ onCacheInvalidate("routes", () => {
 // Regex patterns (defined at module level for performance)
 const WILDCARD_SUFFIX_REGEX = /\*.*$/;
 const TRAILING_SLASH_REGEX = /\/$/;
+const TRAILING_WILDCARD_SEGMENT_REGEX = /\/\.\*$/;
 
 /**
  * Load all active routes with their application info
@@ -97,7 +98,9 @@ function patternToRegex(pattern: string): RegExp {
     // Convert :param to named capture group
     .replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, "(?<$1>[^/]+)")
     // Convert /* wildcard to match anything
-    .replace(/\*/g, ".*");
+    .replace(/\*/g, ".*")
+    // A trailing `/*` also matches the bare prefix: `/todos/*` matches `/todos`
+    .replace(TRAILING_WILDCARD_SEGMENT_REGEX, "(?:/.*)?");
 
   // Ensure pattern matches from start
   if (!regexStr.startsWith("^")) {
