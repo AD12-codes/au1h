@@ -21,12 +21,14 @@ jobs:
       - run: bun run --filter './apps/docs' build
       # No .env in CI on purpose: unit tests must not need a database.
       - run: cd apps/server && bun --env-file=/dev/null test
+      # SDK tests that need no server; the live ones run in the integration job.
+      - run: cd packages/server && bun test
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
-      - run: cd packages/go && go vet ./... && go build ./...
+      - run: cd packages/go && go vet ./... && go build ./... && go test ./...
       - uses: astral-sh/setup-uv@v6
-      - run: cd packages/python && uv build
+      - run: cd packages/python && uv build && uv run pytest -q
 
   integration:
     runs-on: ubuntu-latest
@@ -64,3 +66,10 @@ jobs:
       - run: bun install --frozen-lockfile
       # Real Postgres + Redis, the HTTP app via app.fetch, in-memory email outbox.
       - run: cd apps/server && bun run test:integration
+      # The TypeScript, Go and Python SDKs against the same live server: real
+      # tokens, real JWKS, real server-to-server calls.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: astral-sh/setup-uv@v6
+      - run: cd apps/server && bun run test:sdks
