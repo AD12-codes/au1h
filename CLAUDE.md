@@ -28,6 +28,7 @@ bun x biome check .                 # lint + format, whole repo
 bun run check-types
 cd apps/server && bun test          # unit, no database
 cd apps/server && AU1H_TEST_DATABASE_URL=postgresql://…/au1h_test bun run test:integration
+cd apps/server && AU1H_TEST_DATABASE_URL=postgresql://…/au1h_test bun run test:sdks   # TS, Go, Python SDKs vs a live server
 ```
 
 Review checklist: tenant crossing, authz on new routes, input validation (zod) on bodies,

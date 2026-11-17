@@ -25,7 +25,8 @@
   },
   "scripts": {
     "build": "tsdown",
-    "check-types": "tsc --noEmit -p ."
+    "check-types": "tsc --noEmit -p .",
+    "test": "bun test"
   },
   "dependencies": {
     "jose": "^6.0.11"
