@@ -1,0 +1,3 @@
+# The au1h admin portal is a private console; keep it out of search indexes.
+User-agent: *
+Disallow: /
