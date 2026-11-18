@@ -35,6 +35,19 @@ async function allowedOriginsFor(c: Context): Promise<string[]> {
   return await originsForTenant(slug === AU1H_ADMIN_APP_SLUG ? null : slug);
 }
 
+/**
+ * `http://localhost[:port]`, compared by parsed hostname. A prefix match would
+ * also accept `http://localhost.attacker.example`.
+ */
+function isLocalDevOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    return url.protocol === "http:" && url.hostname === "localhost";
+  } catch {
+    return false;
+  }
+}
+
 export async function dynamicCorsMiddleware(c: Context, next: Next) {
   const origin = c.req.header("Origin");
 
@@ -47,8 +60,7 @@ export async function dynamicCorsMiddleware(c: Context, next: Next) {
   const isAllowed =
     allowed.includes(origin) ||
     // In development, allow all localhost origins
-    (process.env.NODE_ENV !== "production" &&
-      origin.startsWith("http://localhost"));
+    (process.env.NODE_ENV !== "production" && isLocalDevOrigin(origin));
 
   if (!isAllowed) {
     // Origin not allowed, but still need to handle preflight
