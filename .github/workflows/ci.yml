@@ -23,6 +23,8 @@ jobs:
       - run: cd apps/server && bun --env-file=/dev/null test
       # SDK tests that need no server; the live ones run in the integration job.
       - run: cd packages/server && bun test
+      - run: cd packages/client && bun test
+      - run: cd packages/cli && bun test
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"

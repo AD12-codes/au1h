@@ -18,12 +18,18 @@ export interface Config {
   portalUrl?: string;
 }
 
+const TRAILING_SLASHES = /\/+$/;
+
 function dir(): string {
-  const base =
-    process.env.AU1H_CONFIG_DIR ??
-    process.env.XDG_CONFIG_HOME ??
-    join(homedir(), ".config");
-  return process.env.AU1H_CONFIG_DIR ? base : join(base, "au1h");
+  // `||`, not `??`: a variable that is set but empty must not turn the path
+  // into a relative one (the token would land in the current directory).
+  if (process.env.AU1H_CONFIG_DIR) {
+    return process.env.AU1H_CONFIG_DIR;
+  }
+  return join(
+    process.env.XDG_CONFIG_HOME || join(homedir(), ".config"),
+    "au1h"
+  );
 }
 
 export function configPath(): string {
@@ -33,7 +39,10 @@ export function configPath(): string {
 export function readConfig(): Config | null {
   // Environment wins, for CI.
   if (process.env.AU1H_URL && process.env.AU1H_TOKEN) {
-    return { url: process.env.AU1H_URL, token: process.env.AU1H_TOKEN };
+    return {
+      url: process.env.AU1H_URL.replace(TRAILING_SLASHES, ""),
+      token: process.env.AU1H_TOKEN,
+    };
   }
   const p = configPath();
   if (!existsSync(p)) {

@@ -5,6 +5,7 @@ import { readConfig } from "../config";
 import { ask, CliError, c, confirm, kv, log, ok, warn } from "../ui";
 
 const TRAILING_SLASHES = /\/+$/;
+const ENV_ASSIGNMENT = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/;
 
 type Kind =
   | "next"
@@ -81,7 +82,15 @@ function writeIfAbsent(
 
 function appendEnv(path: string, lines: string[]): string[] {
   const current = existsSync(path) ? readFileSync(path, "utf8") : "";
-  const added = lines.filter((l) => !current.includes(`${l.split("=")[0]}=`));
+  // Variables the file already assigns, by exact name. A substring search
+  // would take `NEXT_PUBLIC_AU1H_URL=` or a commented-out line for `AU1H_URL=`.
+  const present = new Set(
+    current
+      .split("\n")
+      .map((line) => ENV_ASSIGNMENT.exec(line)?.[1])
+      .filter(Boolean)
+  );
+  const added = lines.filter((l) => !present.has(l.split("=")[0]));
   if (added.length > 0) {
     writeFileSync(
       path,
