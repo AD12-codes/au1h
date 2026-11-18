@@ -63,7 +63,9 @@ JWKS. The SDKs provide `requireAu1hProxy(verifier)` for exactly this.
 
 Streaming request bodies are supported. The backend call times out after
 `AU1H_PROXY_TIMEOUT_MS` (default 30 s) with a 504, and an unreachable backend answers 502.
-Backend `Set-Cookie` headers are passed through unchanged. Backend redirects are relayed to
+The au1h session cookie stops at the gateway: your backend receives the identity headers,
+never the session itself. Cookies your backend set are forwarded to it, and backend
+`Set-Cookie` headers are passed through unchanged. Backend redirects are relayed to
 the client as-is and never followed by au1h, so a backend cannot turn the gateway into a
 proxy for a third address.
 

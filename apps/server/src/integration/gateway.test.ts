@@ -314,6 +314,26 @@ describeIntegration("gateway", () => {
     expect(JSON.parse(req.body)).toEqual({ title: "milk" });
   });
 
+  test("the au1h session cookie is not forwarded; the backend's own cookies are", async () => {
+    const res = await viaGateway("/gw/echo", {
+      headers: {
+        cookie: `theme=dark; ${userA.cookie}; au1h-app-id=${h.apps.a.slug}; backend_session=abc`,
+      },
+    });
+    expect(res.status).toBe(200);
+    const req = lastSeen();
+    expect(req.headers["x-user-id"]).toBe(userA.id);
+    expect(req.headers.cookie).toBe("theme=dark; backend_session=abc");
+  });
+
+  test("with only au1h cookies, the backend receives no Cookie header", async () => {
+    const res = await viaGateway("/gw/echo", {
+      headers: { cookie: userA.cookie },
+    });
+    expect(res.status).toBe(200);
+    expect(lastSeen().headers.cookie).toBeUndefined();
+  });
+
   test("backend Set-Cookie headers pass through to the client", async () => {
     const res = await viaGateway("/gw/set-cookie", {
       headers: { cookie: userA.cookie },

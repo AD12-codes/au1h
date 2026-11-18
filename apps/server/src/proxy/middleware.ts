@@ -3,6 +3,7 @@ import { getSessionForRequest, mintProxyToken } from "@/lib/auth";
 import { verifyAu1hJwt } from "@/lib/auth/verify-jwt";
 import { clientIp } from "@/middleware/client-ip";
 import { logger } from "@/utils/logger";
+import { stripAu1hCookies } from "./cookies";
 import {
   buildTargetUrl,
   findMatchingRoute,
@@ -149,6 +150,14 @@ function buildProxyHeaders(
     if (!STRIP_REQUEST_HEADERS.includes(key.toLowerCase())) {
       headers.set(key, value);
     }
+  }
+
+  // au1h's session cookie is a credential for au1h, not for the backend.
+  const cookies = stripAu1hCookies(originalHeaders.get("cookie"));
+  if (cookies) {
+    headers.set("cookie", cookies);
+  } else {
+    headers.delete("cookie");
   }
 
   // Inject trusted context headers
