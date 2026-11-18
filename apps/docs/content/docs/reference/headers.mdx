@@ -33,8 +33,13 @@ description: Every header au1h reads or writes.
 
 Any `x-user-*` or `x-app-*` header supplied by the client is replaced before forwarding.
 Client-sent `x-forwarded-for`, `x-forwarded-host`, `x-real-ip` and `proxy-authorization`
-are dropped as well. Other request headers, including `Authorization` and `Cookie`, are
-forwarded unchanged.
+are dropped as well.
+
+au1h's own cookies (the Better Auth session cookies and `au1h-app-id`) are removed from the
+`Cookie` header, so a backend never holds a credential that works against au1h. Cookies
+your backend set for itself are forwarded. Other request headers, including
+`Authorization`, are forwarded unchanged: a bearer JWT is already scoped to your
+application and expires in minutes, and your backend may want to verify it.
 
 ## Response headers
 
