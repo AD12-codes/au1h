@@ -3,6 +3,7 @@ import { createAuthClient } from "better-auth/client";
 import { emailOTPClient, magicLinkClient } from "better-auth/client/plugins";
 import {
   type Au1hClientOptions,
+  attachTokens,
   betterAuthClientOptions,
   createTokenManager,
   type TokenManager,
@@ -68,7 +69,5 @@ export function createAu1hClient<P extends BetterAuthClientPlugin[] = []>(
       ...(options.plugins ?? ([] as unknown as P)),
     ] as [...BuiltInPlugins, ...P],
   });
-  return Object.assign(client, tokens, {
-    appSlug: options.appSlug,
-  }) as Au1hClient<P>;
+  return attachTokens(client, tokens, options.appSlug) as Au1hClient<P>;
 }

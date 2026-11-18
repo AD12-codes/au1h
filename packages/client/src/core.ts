@@ -88,15 +88,24 @@ export function defaultStorage(appSlug: string): TokenStorage {
 export function decodeJwt(token: string): Au1hJwtClaims | null {
   try {
     const part = token.split(".")[1];
-    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(json) as Au1hJwtClaims;
+    // `atob` yields one char per byte; the payload is UTF-8, so decode the
+    // bytes rather than reading them as Latin-1 (names like "José").
+    const binary = atob(part.replace(/-/g, "+").replace(/_/g, "/"));
+    const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+    const claims: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return claims && typeof claims === "object"
+      ? (claims as Au1hJwtClaims)
+      : null;
   } catch {
     return null;
   }
 }
 
 async function readError(res: Response): Promise<Au1hError> {
-  const body = (await res.json().catch(() => ({}))) as {
+  // The body may be absent, not JSON, or JSON `null` (Better Auth answers an
+  // unauthenticated `/token` that way), so nothing about it is assumed.
+  const parsed: unknown = await res.json().catch(() => null);
+  const body = (parsed && typeof parsed === "object" ? parsed : {}) as {
     message?: string;
     error?: string;
     code?: string;
@@ -217,4 +226,28 @@ export function betterAuthClientOptions(
       },
     },
   };
+}
+
+/**
+ * Add the token helpers and `appSlug` to a Better Auth client.
+ *
+ * The Better Auth client is a `Proxy` that answers *every* property read with
+ * an API call builder (`client.getToken()` would request `/get-token`), and
+ * it never looks at properties assigned onto it. So the helpers cannot be
+ * attached with `Object.assign`; they are served by an outer proxy that
+ * checks them first and defers everything else to Better Auth.
+ */
+export function attachTokens<C extends object>(
+  client: C,
+  tokens: TokenManager,
+  appSlug: string
+): C & TokenManager & { appSlug: string } {
+  const extras: Record<string, unknown> = { ...tokens, appSlug };
+  const own = (prop: string | symbol): prop is string =>
+    typeof prop === "string" && Object.hasOwn(extras, prop);
+  return new Proxy(client, {
+    get: (target, prop, receiver) =>
+      own(prop) ? extras[prop] : Reflect.get(target, prop, receiver),
+    has: (target, prop) => own(prop) || Reflect.has(target, prop),
+  }) as C & TokenManager & { appSlug: string };
 }

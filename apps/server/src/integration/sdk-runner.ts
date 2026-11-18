@@ -1,5 +1,6 @@
 /**
- * Runs the SDK test suites (TypeScript, Go, Python) against a live au1h.
+ * Runs the SDK and CLI test suites (TypeScript server SDK, browser client, CLI,
+ * Go, Python) against a live au1h.
  *
  * The SDKs are what a stranger installs first, so they are tested against the
  * real thing rather than recorded tokens: this script boots the integration
@@ -27,6 +28,8 @@ const REPO = new URL("../../../../", import.meta.url).pathname;
 
 const SUITES: Record<string, Suite> = {
   ts: { cwd: `${REPO}packages/server`, run: ["bun", "test"] },
+  client: { cwd: `${REPO}packages/client`, run: ["bun", "test"] },
+  cli: { cwd: `${REPO}packages/cli`, run: ["bun", "test"] },
   go: {
     cwd: `${REPO}packages/go`,
     // Compiles the package and its tests without running any.
@@ -67,7 +70,8 @@ for (const name of names) {
 const h = await startHarness();
 const { eq } = await import("drizzle-orm");
 const { db } = await import("../db");
-const { sessions } = await import("../db/schema/auth");
+const { members, sessions, users } = await import("../db/schema/auth");
+const { createToken } = await import("../tokens/service");
 const { auth, mintProxyToken } = await import("../lib/auth");
 const { runWithTenantStore } = await import("../lib/auth/tenant-context");
 
@@ -125,8 +129,40 @@ async function expiredToken(userId: string): Promise<string> {
   return token;
 }
 
+/**
+ * A workspace owner with a personal access token, for the CLI. Admin users
+ * live outside every application, so the harness cleanup does not reach them.
+ */
+const adminEmail = `sdk-admin-${h.apps.a.slug}@admin.test`;
+async function adminToken(): Promise<{ userId: string; secret: string }> {
+  const userId = crypto.randomUUID();
+  await db.insert(users).values({
+    id: userId,
+    applicationId: null,
+    name: "SDK Admin",
+    email: adminEmail,
+    emailVerified: true,
+  });
+  await db.insert(members).values({
+    id: crypto.randomUUID(),
+    organizationId: h.orgId,
+    userId,
+    role: "owner",
+    createdAt: new Date(),
+  });
+  const { secret } = await createToken({
+    userId,
+    organizationId: h.orgId,
+    name: "sdk runner",
+  });
+  return { userId, secret };
+}
+
 let failed = false;
+let adminId: string | null = null;
 try {
+  const admin = await adminToken();
+  adminId = admin.userId;
   const cookieA = await signUp(h.apps.a.slug);
   const cookieB = await signUp(h.apps.b.slug);
   const user = await h.findUser(h.apps.a.id, email);
@@ -158,6 +194,9 @@ try {
       AU1H_TEST_OTHER_APP_SLUG: h.apps.b.slug,
       AU1H_TEST_USER_ID: user.id,
       AU1H_TEST_USER_EMAIL: email,
+      AU1H_TEST_PAT: admin.secret,
+      AU1H_TEST_ADMIN_EMAIL: adminEmail,
+      AU1H_TEST_ORG_ID: h.orgId,
       AU1H_TEST_ACCESS_TOKEN: await accessToken(h.apps.a.slug, cookieA),
       AU1H_TEST_OTHER_APP_TOKEN: await accessToken(h.apps.b.slug, cookieB),
       AU1H_TEST_EXPIRED_TOKEN: await expiredToken(user.id),
@@ -177,6 +216,9 @@ try {
     }
   }
 } finally {
+  if (adminId) {
+    await db.delete(users).where(eq(users.id, adminId));
+  }
   await h.cleanup();
 }
 
